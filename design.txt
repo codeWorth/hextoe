@@ -1,0 +1,157 @@
+Hexagonal grid using Hexagonal Efficient Coordinate System.
+<A, R, C> for coordinate system (row parity, row, column)
+
+Database tables:
+
+User
+ - user id (random string, key)
+ - username
+ - salted password hash
+ - current session id (random string, also indexed on this)
+ - session ttl (can be null)
+
+Game
+ - game id (random string, key)
+ - player id 1 (user id, can be NULL, indicates waiting)
+ - player id 2 (can be NULL, indicates waiting)
+ - winner id (default NULL, NULL indicates in progress)
+ - creation time
+ - public game (bool)
+
+Move
+ - compound key:
+    - game id
+    - move index (sequential, starts at 0)
+ - A (bool)
+ - R (signed int)
+ - C (signed int)
+
+
+REST API
+
+POST /user, accepts json, returns text
+    Body contains json:
+        - username
+        - password
+    If no user with that username exists, create entry in user table, which will include session id and ttl. Return 200 with session id
+    If a user exists with that username, return 409
+    TODO: users might create way too many accounts
+
+PUT /user, accepts json body, returns text
+    Header contains session id
+    Body contains json:
+        - username (can be null to not modify)
+        - password (can be null to not modify)
+    If username and password are null, return 400
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If session id matches a user, update username and password as requested. Generate new session id and update TTL. Return new session id
+
+DELETE /user, accepts nothing returns nothing
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If session id matches a user, delete that row, return 204
+
+GET /user/<user id>, accepts nothing, returns json
+    Return json with 200:
+        - username
+        - list of games (all games, including in-progress ones)
+                - game id
+                - opponent username
+                - creation time
+                - total # of moves in game
+                - winner username
+        - list of current game ids (in-progress games)
+
+POST /user/login, accept json body, return text
+    Body contains json:
+        - username
+        - password
+    If that username password does not match anyone, return 404
+    If it matches a user, set a new session id and update TTL. return 200 with session id
+
+POST /user/logout, accepts nothing, returns nothing
+     Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If session id matches a user, set TTL to current time. Return 204
+
+POST /game/join, takes nothing, returns text
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If the user matching the session id is in a public game already, return the game id
+    If there are public games with one player id missing, create a new entry in the game list w/ lfp true. Randomly populate either player 1 id or player 2 id with this user. Return 200 with the game id
+    If there is a public game with one player id missing, chose the one with the oldest creation date. Populate the missing player id with this player's id. Return 200 with the game id
+
+POST /game/private takes nothing, returns text
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    Creates a new non public game, returns 200 and the game id
+
+GET /game/<game_id> takes nothing, returns json
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If the game id doesn't exist, returns 404
+    Responds with 200 and response body:
+        - player 1 id
+        - player 2 id
+        - Winner id (can be null if in progress)
+        - id of played who's turn it is
+        - list of moves:
+             - A (int, 0 or 1)
+             - R (int)
+             - C (int)
+
+POST /game/<game_id> takes json, returns json
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If the game id doesn't exist, returns 404
+    If the user doesn't match the user who is supposed to submit a move at this moment, returns 400
+    Json body:
+        - A: int (0 or 1)
+        - R: int
+        - C: int
+    If the move is valid, the server returns 200 with response body:
+        The current game state, same as GET /game/<game id>
+    If the move is invalid, the server returns 200 with response body:
+        - failure reason: some string
+
+
+POST /game/undo/<game id> takes nothing, returns json
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If the game id doesn't exist, returns 404
+    If the game winner is not null, returns 400
+    If the player cannot undo the most recent move, returns 400
+    If the player can undo the most recent move, returns 200 and response body:
+        - same response body as GET /game/<game id>
+
+
+Some additional game mechanics:
+
+ - the current player is:
+         - If there are no moves yet, player 1
+         - if (the current # of moves - 1)/2 rounded down is even, player 2
+         - if (the current # of moves - 1)/2 rounded down is odd, player 1
+
+ - a move is valid if
+        - it does not repeat a previous move (failure reason = "ALREADY_TAKEN")
+        - it is within a taxicab distance of 7 of an existing move (failure reason = "TOO_FAR")
+
+- a player may undo the most recent move if
+     - the winner of the current game is null
+     - the current total number of moves is odd
+
+- taxicab distance formula:
+      - dA = a1 == a2 ? 0 : 1
+      - dR = r2 - r1
+      - dC = c2 - c1
+      - total distance = dA + dR*2 + dC
+
+A player wins if they get 6 in a line. Two locations are on a line if |c2 - c1| == |r2 - r1|
