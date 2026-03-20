@@ -98,9 +98,8 @@ async function createPrivate() {
 function renderGameList() {
 	gameListEl.innerHTML = "";
 	for (const game of _games) {
-		const winnerSide = game.is_complete ? game.winner_index : null;
 		const entry = createGameEntry(
-			game.game_id, game.p1_uname, game.p2_uname, game.total_moves, winnerSide,
+            game,
 			{ selected: game.game_id === _selectedGameId, onMouseEnter: () => previewGame(game.game_id) }
 		);
 		gameListEl.appendChild(entry);

@@ -133,31 +133,30 @@ function setupPanning(canvas, renderFn, onClickFn) {
 
 // Create a game entry element for a game list.
 // params:
-//   gameId: string
-//   leftName: string - player name on the left
-//   rightName: string - player name on the right
-//   totalMoves: int
-//   winnerSide: 0 = draw, 1 = left won, 2 = right won, null = in progress
+//   game: Game object
 //   opts: { selected: bool, onMouseEnter: fn }
-function createGameEntry(gameId, leftName, rightName, totalMoves, winnerSide, opts = {}) {
+function createGameEntry(game, opts = {}) {
 	const entry = document.createElement("div");
 	entry.className = "game-entry" + (opts.selected ? " selected" : "");
-	entry.onclick = () => { window.location.href = "/game/" + gameId; };
+	entry.onclick = () => { window.location.href = "/game/" + game.game_id; };
 	if (opts.onMouseEnter) entry.onmouseenter = opts.onMouseEnter;
 
 	const p1 = document.createElement("span");
 	p1.className = "p1";
-	p1.textContent = leftName || "[Deleted]";
+	p1.textContent = formatUname(game.p1_uname, game.player_id_1, game.is_started);
 
 	const mid = document.createElement("span");
 	mid.className = "moves";
-	mid.textContent = "Move " + totalMoves;
+	mid.textContent = "Move " + game.total_moves;
 
 	const p2 = document.createElement("span");
 	p2.className = "p2";
-	p2.textContent = rightName || "[Deleted]";
+	p2.textContent = formatUname(game.p2_uname, game.player_id_2, game.is_started);
 
-	if (winnerSide === 1) {
+	const winnerSide = game.winner_index;
+	if (!game.is_complete) {
+		// do not add any classes
+	} else if (winnerSide === 1) {
 		p1.classList.add("winner");
 	} else if (winnerSide === 2) {
 		p2.classList.add("winner");
@@ -174,8 +173,8 @@ function createGameEntry(gameId, leftName, rightName, totalMoves, winnerSide, op
 
 // -- Helpers --
 
-function formatUname(uname, uid) {
-	if (uid) {
+function formatUname(uname, uid, is_started) {
+	if (uid && is_started) {
 		return uname || "[Deleted]";
 	} else {
 		return uname || "...";

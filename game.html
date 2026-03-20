@@ -129,8 +129,8 @@ function renderPlayerInfo() {
 	el.innerHTML = "";
 	if (!_gameState) return;
 
-	let p1Name = formatUname(_gameState.p1_uname, _gameState.player_id_1);
-	let p2Name = formatUname(_gameState.p2_uname, _gameState.player_id_2);
+	let p1Name = formatUname(_gameState.p1_uname, _gameState.player_id_1, _gameState.is_started);
+	let p2Name = formatUname(_gameState.p2_uname, _gameState.player_id_2, _gameState.is_started);
 
 	const isP1 = currentUser && currentUser.user_id === _gameState.player_id_1;
 	const isP2 = currentUser && currentUser.user_id === _gameState.player_id_2;
@@ -144,7 +144,7 @@ function renderPlayerInfo() {
 	const p1Won = _gameState.winner_id && _gameState.winner_id === _gameState.player_id_1;
 	const p2Won = _gameState.winner_id && _gameState.winner_id === _gameState.player_id_2;
 
-	function makeRow(symbol, symbolClass, name, isWinner) {
+	function makeRow(symbol, symbolClass, name, playerId, isWinner) {
 		const row = document.createElement("div");
 		row.className = "player-row";
 		const sym = document.createElement("span");
@@ -154,16 +154,20 @@ function renderPlayerInfo() {
 		nm.className = "player-name";
 		nm.textContent = name;
 		if (isWinner) {
-            nm.style.color = "#5e8c61";
-            nm.textContent += " (Winner!)";
-        }
+			nm.style.color = "var(--green)";
+			nm.textContent += " (Winner!)";
+		}
+		if (playerId) {
+			nm.style.cursor = "pointer";
+			nm.onclick = () => { window.location.href = "/user/" + playerId; };
+		}
 		row.appendChild(sym);
 		row.appendChild(nm);
 		return row;
 	}
 
-	el.appendChild(makeRow("X", "x", p1Name, p1Won));
-	el.appendChild(makeRow("O", "o", p2Name, p2Won));
+	el.appendChild(makeRow("X", "x", p1Name, _gameState.player_id_1, p1Won));
+	el.appendChild(makeRow("O", "o", p2Name, _gameState.player_id_2, p2Won));
 }
 
 function renderMoveList() {

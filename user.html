@@ -71,7 +71,6 @@ const gameListEl = document.getElementById("game-list-items");
 
 let _username = null;
 let _games = [];
-let _selectedGameId = null;
 
 function renderProfile() {
 	if (!_username) {
@@ -90,20 +89,22 @@ function renderProfile() {
 	}
 }
 
+function addGameEntry(game) {
+    const entry = createGameEntry(game);
+    gameListEl.appendChild(entry);
+}
+
 function renderGameList() {
 	gameListEl.innerHTML = "";
 	for (const game of _games) {
-		const winnerSide = game.is_complete ? game.winner_index : null;
-		const entry = createGameEntry(
-			game.game_id, game.p1_uname, game.p2_uname, game.total_moves, winnerSide,
-			{ selected: game.game_id === _selectedGameId }
-		);
-		entry.onclick = () => {
-			_selectedGameId = game.game_id;
-			renderGameList();
-			window.location.href = "/game/" + game.game_id;
-		};
-		gameListEl.appendChild(entry);
+        if(!game.is_complete) {
+            addGameEntry(game);
+        }
+	}
+	for (const game of _games) {
+        if(game.is_complete) {
+            addGameEntry(game);
+        }
 	}
 }
 

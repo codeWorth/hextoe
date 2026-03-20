@@ -47,10 +47,11 @@ class MoveFailureResponse(BaseModel):
 
 class GameListEntry(BaseModel):
     game_id: str
-    p1_uname: str
-    p2_uname: str
-    total_moves: int
     is_complete: bool
+    is_started: bool
+    p1_uname: Optional[str]
+    p2_uname: Optional[str]
+    total_moves: int
     winner_index: int
 
 

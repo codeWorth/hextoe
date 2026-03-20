@@ -41,6 +41,9 @@ def require_valid_session(session_id: str, db: Session) -> User:
 
 
 def get_uname_safe(uname: str, is_deleted: bool, is_anon: bool) -> str:
+    if uname is None:
+        return None
+
     if is_deleted:
         return None
     if is_anon:
@@ -210,6 +213,9 @@ def validate_move(a: int, r: int, c: int, existing_moves: list[Move]) -> Optiona
 
 # Get the winner index, 0 if neither, 1 if p1, 2 if p2
 def winner_index(pid1, pid2, winner_id):
+    if pid1 is None or pid2 is None or winner_id is None:
+        return 0
+
     if winner_id == pid1:
         return 1
     if winner_id == pid2:

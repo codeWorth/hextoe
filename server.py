@@ -193,7 +193,7 @@ def get_current_user(session_id: str = Cookie(...)):
 def get_user(user_id: str):
     with Session(engine) as db:
         user = db.get(User, user_id)
-        if user is None:
+        if user is None or user.is_deleted:
             raise HTTPException(status_code=404)
         return {
             "username": get_uuname_safe(user),
@@ -205,6 +205,12 @@ def get_user(user_id: str):
 @app.get("/api/user/{user_id}/games", response_model=GameListResponse)
 def get_user_games(user_id: str):
     with Session(engine) as db:
+        # We need to check that the user is not deleted. So we can also
+        # check here that the user actually exists, and save a useless db query.
+        user = db.get(User, user_id)
+        if user is None or user.is_deleted:
+            raise HTTPException(status_code=404)
+
         Player1 = aliased(User)
         Player2 = aliased(User)
 
@@ -214,7 +220,6 @@ def get_user_games(user_id: str):
             select(
                 Game.game_id,
                 Game.is_complete,
-                Game.creation_time,
                 Game.player_id_1,
                 Game.player_id_2,
                 Game.winner_id,
@@ -227,20 +232,20 @@ def get_user_games(user_id: str):
                 func.count(Move.move_index).label("total_moves"),
             )
             .where(
-                Game.player_id_1 != None,
-                Game.player_id_2 != None,
                 (Game.player_id_1 == user_id) | (Game.player_id_2 == user_id),
             )
             .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
             .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
             .outerjoin(Move, Move.game_id == Game.game_id)
             .group_by(Game.game_id)
+            .order_by(Game.move_time.desc())
+            .limit(200)
         ).all()
 
         return {"games": [{
             "game_id": game.game_id,
             "is_complete": game.is_complete,
-            "creation_time": game.creation_time,
+            "is_started": game.player_id_1 is not None and game.player_id_2 is not None,
             "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
             "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
             "winner_index": winner_index(game.player_id_1, game.player_id_2, game.winner_id),
@@ -512,10 +517,11 @@ def get_games(response_model=GameListResponse):
 
         return [{
             "game_id": game.game_id,
+            "is_complete": game.is_complete,
+            "is_started": game.player_id_1 is not None and game.player_id_2 is not None,
             "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
             "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
             "total_moves": game.total_moves,
-            "is_complete": game.is_complete,
             "winner_index": winner_index(game.player_id_1, game.player_id_2, game.winner_id)
         } for game in games]
 
