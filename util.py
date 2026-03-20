@@ -2,8 +2,8 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
+import bcrypt
 from fastapi import HTTPException
-from passlib.context import CryptContext
 from sqlmodel import Session, select
 
 from db_schemas import Game, Move, User
@@ -13,7 +13,12 @@ MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
 MOVE_TOO_FAR = "TOO_FAR"
 MAX_MOVE_DIST = 7
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode(), password_hash.encode())
 
 
 def new_id_str() -> str:
@@ -28,9 +33,15 @@ def new_session_ttl() -> datetime:
 # (could be not present or expired)
 def require_valid_session(session_id: str, db: Session) -> User:
     user = db.exec(select(User).where(User.session_id == session_id)).first()
-    if user is None or user.session_ttl <= datetime.utcnow():
+    if user is None or user.is_deleted or user.session_ttl <= datetime.utcnow():
         raise HTTPException(status_code=403)
     return user
+
+
+def get_uname_safe(uname: str, is_deleted: bool) -> str:
+    if is_deleted:
+        return None
+    return uname
 
 
 def other_value(a, b, v):

@@ -22,9 +22,11 @@ from util import (
     build_game_state,
     check_winner,
     get_current_player_id,
+    get_uname_safe,
     new_id_str,
     new_session_ttl,
-    pwd_context,
+    hash_password,
+    verify_password,
     require_valid_session,
     validate_move,
 )
@@ -61,7 +63,7 @@ def create_user(body: UserInfoBody):
         user = User(
             user_id=new_id_str(),
             username=body.username,
-            password_hash=pwd_context.hash(body.password),
+            password_hash=hash_password(body.password),
             session_id=new_id_str(),
             session_ttl=new_session_ttl(),
         )
@@ -80,7 +82,7 @@ def update_user(body: UpdateUserBody, session_id: str = Header(...)):
         if body.username is not None:
             user.username = body.username
         if body.password is not None:
-            user.password_hash = pwd_context.hash(body.password)
+            user.password_hash = hash_password(body.password)
         user.session_id = new_id_str()
         user.session_ttl = new_session_ttl()
         db.add(user)
@@ -93,7 +95,9 @@ def update_user(body: UpdateUserBody, session_id: str = Header(...)):
 def delete_user(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
-        db.delete(user)
+        user.is_deleted = True
+        user.session_ttl = datetime.utcnow()
+        db.add(user)
         db.commit()
 
 
@@ -119,7 +123,9 @@ def get_user(user_id: str):
                 Game.is_complete,
                 Game.creation_time,
                 Opponent.username.label("opponent_username"),
+                Opponent.is_deleted.label("opponent_deleted"),
                 Winner.username.label("winner_username"),
+                Winner.is_deleted.label("winner_deleted"),
                 func.count(Move.move_index).label("total_moves"),
             )
             .where(
@@ -136,7 +142,7 @@ def get_user(user_id: str):
             )
             .outerjoin(Winner, Winner.user_id == Game.winner_id)
             .outerjoin(Move, Move.game_id == Game.game_id)
-            .group_by(Game.game_id)
+            .group_by(Game.game_id, Opponent.username, Opponent.is_deleted, Winner.username, Winner.is_deleted)
         ).all()
 
         current_game_ids = []
@@ -144,16 +150,18 @@ def get_user(user_id: str):
         for row in rows:
             if not row.is_complete:
                 current_game_ids.append(row.game_id)
+            opponent_name = get_uname_safe(row.opponent_username, row.opponent_deleted)
+            winner_name = get_uname_safe(row.winner_username, row.winner_deleted)
             game_list.append({
                 "game_id": row.game_id,
-                "opponent_username": row.opponent_username,
+                "opponent_username": opponent_name,
                 "creation_time": row.creation_time,
                 "total_moves": row.total_moves,
-                "winner_username": row.winner_username,
+                "winner_username": winner_name,
             })
 
         return {
-            "username": user.username,
+            "username": get_uname_safe(user.username, user.is_deleted),
             "games": game_list,
             "current_game_ids": current_game_ids,
         }
@@ -165,7 +173,7 @@ def get_user(user_id: str):
 def login(body: UserInfoBody):
     with Session(engine) as db:
         user = db.exec(select(User).where(User.username == body.username)).first()
-        if user is None or not pwd_context.verify(body.password, user.password_hash):
+        if user is None or not verify_password(body.password, user.password_hash):
             raise HTTPException(status_code=404)
         user.session_id = new_id_str()
         user.session_ttl = new_session_ttl()
@@ -265,10 +273,8 @@ def create_private_game(session_id: str = Header(...)):
 
 # Get game state
 @app.get("/game/{game_id}", response_model=GameStateResponse)
-def get_game(game_id: str, session_id: str = Header(...)):
+def get_game(game_id: str):
     with Session(engine) as db:
-        require_valid_session(session_id, db)
-
         game = db.get(Game, game_id)
         if game is None:
             raise HTTPException(status_code=404)
