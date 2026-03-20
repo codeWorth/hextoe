@@ -300,7 +300,7 @@ async function runTests() {
 	r = await request("GET", "/api/user/" + p1Id);
 	assertStatus(r.status, 200, "Get user profile");
 	assert(r.data.games.length >= 1, "User has at least 1 game in game list");
-	info("p1 user has " + r.data.games.length + " game(s), " + r.data.current_game_ids.length + " in-progress");
+	info("p1 user has " + r.data.games.length + " game(s)");
 
 	// =====================
 	// GET /user (current user)
@@ -312,7 +312,6 @@ async function runTests() {
 	assertStatus(r.status, 200, "Get current user");
 	assertEq(r.data.username, p1User.username, "Current user username matches");
 	assert(Array.isArray(r.data.games), "Current user has games array");
-	assert(Array.isArray(r.data.current_game_ids), "Current user has current_game_ids array");
 
 	// =====================
 	// DELETED USERS

@@ -98,35 +98,11 @@ async function createPrivate() {
 function renderGameList() {
 	gameListEl.innerHTML = "";
 	for (const game of _games) {
-		const entry = document.createElement("div");
-		entry.className = "game-entry" + (game.game_id === _selectedGameId ? " selected" : "");
-		entry.onmouseenter = () => previewGame(game.game_id);
-		entry.onclick = () => { window.location.href = "/game/" + game.game_id; };
-
-		const p1 = document.createElement("span");
-		p1.className = "p1";
-		p1.textContent = game.p1_uname || "[Deleted]";
-
-		const mid = document.createElement("span");
-		mid.className = "moves";
-		mid.textContent = "Move " + game.total_moves;
-
-		const p2 = document.createElement("span");
-		p2.className = "p2";
-		p2.textContent = game.p2_uname || "[Deleted]";
-
-		if (game.is_complete && game.winner_index === 1) {
-			p1.classList.add("winner");
-		} else if (game.is_complete && game.winner_index === 2) {
-			p2.classList.add("winner");
-		} else if (game.is_complete && game.winner_index === 0) {
-			p1.classList.add("draw");
-			p2.classList.add("draw");
-		}
-
-		entry.appendChild(p1);
-		entry.appendChild(mid);
-		entry.appendChild(p2);
+		const winnerSide = game.is_complete ? game.winner_index : null;
+		const entry = createGameEntry(
+			game.game_id, game.p1_uname, game.p2_uname, game.total_moves, winnerSide,
+			{ selected: game.game_id === _selectedGameId, onMouseEnter: () => previewGame(game.game_id) }
+		);
 		gameListEl.appendChild(entry);
 	}
 }

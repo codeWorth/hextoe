@@ -64,6 +64,8 @@ function renderHeader(onLogout) {
 		const span = document.createElement("span");
 		span.className = "username";
 		span.textContent = currentUser.username;
+		span.style.cursor = "pointer";
+		span.onclick = () => { window.location.href = "/user/" + currentUser.user_id; };
 		el.appendChild(span);
 		const btn = document.createElement("button");
 		btn.className = "btn-secondary btn-small";
@@ -125,6 +127,49 @@ function setupPanning(canvas, renderFn, onClickFn) {
 		reset() { camX = 0; camY = 0; renderFn(); },
 	};
 	return cam;
+}
+
+// -- Game list entries --
+
+// Create a game entry element for a game list.
+// params:
+//   gameId: string
+//   leftName: string - player name on the left
+//   rightName: string - player name on the right
+//   totalMoves: int
+//   winnerSide: 0 = draw, 1 = left won, 2 = right won, null = in progress
+//   opts: { selected: bool, onMouseEnter: fn }
+function createGameEntry(gameId, leftName, rightName, totalMoves, winnerSide, opts = {}) {
+	const entry = document.createElement("div");
+	entry.className = "game-entry" + (opts.selected ? " selected" : "");
+	entry.onclick = () => { window.location.href = "/game/" + gameId; };
+	if (opts.onMouseEnter) entry.onmouseenter = opts.onMouseEnter;
+
+	const p1 = document.createElement("span");
+	p1.className = "p1";
+	p1.textContent = leftName || "[Deleted]";
+
+	const mid = document.createElement("span");
+	mid.className = "moves";
+	mid.textContent = "Move " + totalMoves;
+
+	const p2 = document.createElement("span");
+	p2.className = "p2";
+	p2.textContent = rightName || "[Deleted]";
+
+	if (winnerSide === 1) {
+		p1.classList.add("winner");
+	} else if (winnerSide === 2) {
+		p2.classList.add("winner");
+	} else if (winnerSide === 0) {
+		p1.classList.add("draw");
+		p2.classList.add("draw");
+	}
+
+	entry.appendChild(p1);
+	entry.appendChild(mid);
+	entry.appendChild(p2);
+	return entry;
 }
 
 // -- Helpers --

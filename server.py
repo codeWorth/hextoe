@@ -11,13 +11,12 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from db_schemas import Game, Move, User
 from json_schemas import (
     GameStateResponse,
-    GameSummary,
     MoveBody,
     MoveFailureResponse,
     UpdateUserBody,
     UserInfoBody,
     UserProfileResponse,
-    MyUserProfileResponse,
+    GameListResponse,
 )
 from util import (
     build_game_state,
@@ -60,6 +59,11 @@ def serve_home():
 @app.get("/login")
 def serve_login():
     return FileResponse("login.html")
+
+
+@app.get("/user/{user_id}")
+def serve_user_page(user_id: str):
+    return FileResponse("user.html")
 
 
 @app.get("/game/{game_id}")
@@ -174,86 +178,74 @@ def delete_user(response: Response, session_id: str = Cookie(...)):
 
 
 # Get current user info
-@app.get("/api/user", response_model=MyUserProfileResponse)
+@app.get("/api/user", response_model=UserProfileResponse)
 def get_current_user(session_id: str = Cookie(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
-        return _get_user(user.user_id, db) | {"user_id": user.user_id}
+        return {
+            "username": get_uuname_safe(user),
+            "user_id": user.user_id
+        }
 
 
 # Get existing user info
 @app.get("/api/user/{user_id}", response_model=UserProfileResponse)
 def get_user(user_id: str):
     with Session(engine) as db:
-        return _get_user(user_id, db)
+        user = db.get(User, user_id)
+        if user is None:
+            raise HTTPException(status_code=404)
+        return {
+            "username": get_uuname_safe(user),
+            "user_id": user.user_id
+        }
 
 
-# Private func to get the user by user id
-def _get_user(user_id: str, db: Session):
-    user = db.get(User, user_id)
-    if user is None or user.is_deleted:
-        raise HTTPException(status_code=404)
+# Get user games
+@app.get("/api/user/{user_id}/games", response_model=GameListResponse)
+def get_user_games(user_id: str):
+    with Session(engine) as db:
+        Player1 = aliased(User)
+        Player2 = aliased(User)
 
-    Opponent = aliased(User)
-    Winner = aliased(User)
+        # This query gets all of the fields we're interested in one shot via
+        # joining on the User and Move tables
+        games = db.exec(
+            select(
+                Game.game_id,
+                Game.is_complete,
+                Game.creation_time,
+                Game.player_id_1,
+                Game.player_id_2,
+                Game.winner_id,
+                func.any_value(Player1.username).label("p1_uname"),
+                func.any_value(Player1.is_deleted).label("p1_deleted"),
+                func.any_value(Player1.is_anon).label("p1_anon"),
+                func.any_value(Player2.username).label("p2_uname"),
+                func.any_value(Player2.is_deleted).label("p2_deleted"),
+                func.any_value(Player2.is_anon).label("p2_anon"),
+                func.count(Move.move_index).label("total_moves"),
+            )
+            .where(
+                Game.player_id_1 != None,
+                Game.player_id_2 != None,
+                (Game.player_id_1 == user_id) | (Game.player_id_2 == user_id),
+            )
+            .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
+            .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
+            .outerjoin(Move, Move.game_id == Game.game_id)
+            .group_by(Game.game_id)
+        ).all()
 
-    # This query gets all of the fields we're interested in one shot via
-    # joining on the User and Move tables. The somewhat confusing outerjoin
-    # on Opponent is just saying that we want to join against the user which
-    # is not our current user. So if our user id is in the `player_id_1`
-    # field, we join on `player_id_2`, and vice versa.
-    rows = db.exec(
-        select(
-            Game.game_id,
-            Game.is_complete,
-            Game.creation_time,
-            func.any_value(Opponent.username).label("opponent_username"),
-            func.any_value(Opponent.is_deleted).label("opponent_deleted"),
-            func.any_value(Opponent.is_anon).label("opponent_anon"),
-            func.any_value(Winner.username).label("winner_username"),
-            func.any_value(Winner.is_deleted).label("winner_deleted"),
-            func.any_value(Winner.is_anon).label("winner_anon"),
-            func.count(Move.move_index).label("total_moves"),
-        )
-        .where(
-            Game.player_id_1 != None,
-            Game.player_id_2 != None,
-            (Game.player_id_1 == user_id) | (Game.player_id_2 == user_id),
-        )
-        .outerjoin(
-            Opponent,
-            or_(
-                and_(Game.player_id_1 == user_id, Opponent.user_id == Game.player_id_2),
-                and_(Game.player_id_2 == user_id, Opponent.user_id == Game.player_id_1),
-            ),
-        )
-        .outerjoin(Winner, Winner.user_id == Game.winner_id)
-        .outerjoin(Move, Move.game_id == Game.game_id)
-        .group_by(Game.game_id)
-    ).all()
-
-    current_game_ids = []
-    game_list = []
-    for row in rows:
-        if not row.is_complete:
-            current_game_ids.append(row.game_id)
-        opponent_name = get_uname_safe(row.opponent_username, row.opponent_deleted,
-                                        row.opponent_anon)
-        winner_name = get_uname_safe(row.winner_username, row.winner_deleted,
-                                        row.winner_anon)
-        game_list.append({
-            "game_id": row.game_id,
-            "opponent_username": opponent_name,
-            "creation_time": row.creation_time,
-            "total_moves": row.total_moves,
-            "winner_username": winner_name,
-        })
-
-    return {
-        "username": get_uuname_safe(user),
-        "games": game_list,
-        "current_game_ids": current_game_ids,
-    }
+        return {"games": [{
+            "game_id": game.game_id,
+            "is_complete": game.is_complete,
+            "creation_time": game.creation_time,
+            "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
+            "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
+            "winner_index": winner_index(game.player_id_1, game.player_id_2, game.winner_id),
+            "total_moves": game.total_moves,
+        } for game in games]}
 
 
 # User login. This generates a new session id each time, meaning any other
@@ -487,7 +479,7 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
 # Returns up to 25 games where the game has at least started (both player ids are
 # present), and the game is public
 @app.post("/api/games")
-def get_games():
+def get_games(response_model=GameListResponse):
     with Session(engine) as db:
         Player1 = aliased(User)
         Player2 = aliased(User)
