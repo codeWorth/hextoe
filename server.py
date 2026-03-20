@@ -32,6 +32,7 @@ from util import (
     verify_password,
     require_valid_session,
     validate_move,
+    winner_index,
 )
 
 
@@ -63,6 +64,11 @@ def serve_login():
 @app.get("/game/{game_id}")
 def serve_game(game_id: str):
     return FileResponse("game.html")
+
+
+@app.get("/src/hex.js")
+def serve_hex_js():
+    return FileResponse("hex.js")
 
 
 @app.get("/test")
@@ -352,6 +358,18 @@ def create_private_game(session_id: str = Header(...)):
         return game.game_id
 
 
+def _get_player_names(game: Game, db: Session):
+    p1_name = None
+    p2_name = None
+    if game.player_id_1:
+        u = db.get(User, game.player_id_1)
+        if u: p1_name = get_uuname_safe(u)
+    if game.player_id_2:
+        u = db.get(User, game.player_id_2)
+        if u: p2_name = get_uuname_safe(u)
+    return p1_name, p2_name
+
+
 # Get game state
 @app.get("/api/game/{game_id}", response_model=GameStateResponse)
 def get_game(game_id: str, session_id: str = Header(None)):
@@ -368,7 +386,8 @@ def get_game(game_id: str, session_id: str = Header(None)):
         moves = db.exec(
             select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
         ).all()
-        return build_game_state(game, moves, user_id)
+        p1_name, p2_name = _get_player_names(game, db)
+        return build_game_state(game, moves, user_id, p1_name, p2_name)
 
 
 # Submit a move
@@ -413,10 +432,13 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Header(...)):
         elif winner == 2:
             game.winner_id = game.player_id_2
             game.is_complete = True
+
+        game.move_time = datetime.utcnow()
         db.add(game)
         db.commit()
 
-        return build_game_state(game, moves, user.user_id)
+        p1_name, p2_name = _get_player_names(game, db)
+        return build_game_state(game, moves, user.user_id, p1_name, p2_name)
 
 
 # Undo the most recent move
@@ -442,7 +464,53 @@ def undo_move(game_id: str, session_id: str = Header(...)):
 
         db.delete(moves[-1])
         db.commit()
-        return build_game_state(game, moves[:-1], user.user_id)
+        p1_name, p2_name = _get_player_names(game, db)
+        return build_game_state(game, moves[:-1], user.user_id, p1_name, p2_name)
+
+
+# Get a list of recent active games.
+# Returns up to 25 games where the game has at least started (both player ids are
+# present), and the game is public
+@app.post("/api/games")
+def get_games():
+    with Session(engine) as db:
+        Player1 = aliased(User)
+        Player2 = aliased(User)
+        games = db.exec(
+            select(
+                Game.game_id,
+                Game.is_complete,
+                Game.player_id_1,
+                Game.player_id_2,
+                Game.winner_id,
+                func.any_value(Player1.username).label("p1_uname"),
+                func.any_value(Player1.is_deleted).label("p1_deleted"),
+                func.any_value(Player1.is_anon).label("p1_anon"),
+                func.any_value(Player2.username).label("p2_uname"),
+                func.any_value(Player2.is_deleted).label("p2_deleted"),
+                func.any_value(Player2.is_anon).label("p2_anon"),
+                func.count(Move.move_index).label("total_moves"),
+            ).where(
+                Game.player_id_1 != None,
+                Game.player_id_2 != None,
+                Game.is_public == True
+            )
+            .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
+            .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
+            .outerjoin(Move, Move.game_id == Game.game_id)
+            .group_by(Game.game_id)
+            .order_by(Game.move_time.desc())
+            .limit(25)
+        ).all()
+
+        return [{
+            "game_id": game.game_id,
+            "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
+            "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
+            "total_moves": game.total_moves,
+            "is_complete": game.is_complete,
+            "winner_index": winner_index(game.player_id_1, game.player_id_2, game.winner_id)
+        } for game in games]
 
 
 # Forfeit a game

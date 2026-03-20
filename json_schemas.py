@@ -62,3 +62,16 @@ class MyUserProfileResponse(BaseModel):
     user_id: str
     games: list[GameSummary]
     current_game_ids: list[str]
+
+
+class GameListEntry(BaseModel):
+    game_id: str
+    p1_uname: str
+    p2_uname: str
+    total_moves: int
+    is_complete: bool
+    winner_index: int
+
+
+class GameListResponse(BaseModel):
+    games: list[GameListEntry]

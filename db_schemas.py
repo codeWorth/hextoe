@@ -25,6 +25,7 @@ class Game(SQLModel, table=True):
     winner_id: Optional[str] = Field(default=None, foreign_key="user.user_id")
     is_complete: bool = Field(default=False)
     creation_time: datetime = Field(default_factory=datetime.utcnow)
+    move_time: datetime = Field(default_factory=datetime.utcnow)
     is_public: bool = Field(default=True)
 
 

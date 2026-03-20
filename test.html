@@ -430,6 +430,30 @@ async function runTests() {
 	assertStatus(r.status, 404, "Forfeit already-complete game returns 404");
 
 	// =====================
+	// GET /api/games - List recent games
+	// =====================
+	section("POST /games - List recent games");
+
+	r = await request("POST", "/api/games");
+	assertStatus(r.status, 200, "Get games list");
+	assert(Array.isArray(r.data), "Response is an array");
+
+	// Only the public game should appear (both players set and is_public)
+	// Private and anon games each have only one player, so they're excluded
+	const publicEntry = r.data.find(g => g.game_id === publicGameId);
+	assert(publicEntry !== undefined, "Public game found in games list");
+	assertEq(publicEntry.p1_uname, NEW_USER1, "Public game p1 username matches");
+	assertEq(publicEntry.p2_uname, null, "Public game p2 username is null (deleted user)");
+	assertEq(publicEntry.total_moves, 4, "Public game has 4 moves");
+	assertEq(publicEntry.is_complete, true, "Public game is complete (forfeited)");
+
+	// Private and anon games should NOT appear
+	const privateEntry = r.data.find(g => g.game_id === privateGameId);
+	assertEq(privateEntry, undefined, "Private game not in public games list");
+	const anonEntry = r.data.find(g => g.game_id === anonGameId);
+	assertEq(anonEntry, undefined, "Anon game not in public games list");
+
+	// =====================
 	// CLEANUP - Delete remaining users
 	// =====================
 	section("DELETE /user - Cleanup");

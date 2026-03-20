@@ -4,31 +4,72 @@
 	<title>HexToe</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
-		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }
+		html, body { height: 100%; }
+		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2b2b2b; color: #d4d4d4; display: flex; flex-direction: column; }
 
 		.header {
 			display: flex; justify-content: space-between; align-items: center;
-			padding: 16px 32px; background: #16213e; border-bottom: 2px solid #0f3460;
+			padding: 16px 32px; background: #232323; border-bottom: 2px solid #3a3a3a;
 		}
-		.header h1 { font-size: 28px; color: #e94560; letter-spacing: 2px; }
+		.header h1 { font-size: 28px; color: #5e8c61; letter-spacing: 2px; }
 		.header-right { display: flex; align-items: center; gap: 16px; }
-		.header-right .username { color: #a8b2d1; font-size: 16px; }
+		.header-right .username { color: #aaa; font-size: 16px; }
 
 		button {
 			padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer;
 			font-size: 16px; font-weight: 600; transition: background 0.2s;
 		}
-		.btn-primary { background: #e94560; color: #fff; }
-		.btn-primary:hover { background: #c73e54; }
-		.btn-secondary { background: #0f3460; color: #eee; }
-		.btn-secondary:hover { background: #1a4a8a; }
+		.btn-primary { background: #4a7c4f; color: #eee; }
+		.btn-primary:hover { background: #5e8c61; }
+		.btn-secondary { background: #3a3a3a; color: #d4d4d4; }
+		.btn-secondary:hover { background: #4a4a4a; }
 		.btn-small { padding: 6px 16px; font-size: 14px; }
 
-		.main {
-			display: flex; flex-direction: column; align-items: center;
-			justify-content: center; padding: 80px 32px; gap: 24px;
+		.button-row {
+			display: flex; justify-content: center; gap: 16px;
+			padding: 20px 32px;
 		}
-		.main button { width: 280px; padding: 18px; font-size: 20px; }
+		.button-row button { width: 220px; padding: 14px; font-size: 18px; }
+
+		.viewer {
+			flex: 1; display: flex; overflow: hidden; padding: 0 24px 24px 24px; gap: 16px;
+			min-height: 0; justify-content: center;
+		}
+
+		.canvas-area {
+			position: relative; aspect-ratio: 4 / 3; height: 100%; max-width: calc(100% - 316px);
+		}
+		.canvas-wrap { width: 100%; height: 100%; overflow: hidden; }
+		canvas { background: #252525; border-radius: 8px; }
+		.recenter-btn {
+			position: absolute; bottom: 12px; right: 12px;
+			width: 36px; height: 36px; border: none; border-radius: 6px;
+			background: rgba(58, 58, 58, 0.8); color: #999; font-size: 20px;
+			cursor: pointer; display: flex; align-items: center; justify-content: center;
+		}
+		.recenter-btn:hover { background: rgba(74, 74, 74, 1); color: #d4d4d4; }
+
+		.game-list {
+			width: 300px; min-width: 240px; background: #232323; border-radius: 8px;
+			border: 1px solid #3a3a3a; display: flex; flex-direction: column; overflow: hidden;
+		}
+		.game-list-header {
+			padding: 10px 14px; font-size: 14px; font-weight: 600; color: #888;
+			border-bottom: 1px solid #3a3a3a;
+		}
+		.game-list-items { flex: 1; overflow-y: auto; }
+
+		.game-entry {
+			display: flex; align-items: center; padding: 10px 14px;
+			cursor: pointer; border-bottom: 1px solid #2e2e2e; font-size: 14px;
+		}
+		.game-entry:hover { background: #2e2e2e; }
+		.game-entry.selected { background: #2a3a2a; }
+		.game-entry .p1 { flex: 1; text-align: left; }
+		.game-entry .moves { flex: 0 0 auto; text-align: center; color: #888; font-size: 12px; padding: 0 8px; }
+		.game-entry .p2 { flex: 1; text-align: right; }
+		.game-entry .winner { color: #5e8c61; }
+		.game-entry .draw { color: #666; }
 	</style>
 </head>
 <body>
@@ -36,13 +77,35 @@
 		<h1>HexToe</h1>
 		<div class="header-right" id="header-right"></div>
 	</div>
-	<div class="main">
+	<div class="button-row">
 		<button class="btn-primary" onclick="play()">Play</button>
 		<button class="btn-secondary" onclick="createPrivate()">Create Private Room</button>
 	</div>
+	<div class="viewer">
+		<div class="canvas-area">
+			<div class="canvas-wrap"><canvas id="canvas"></canvas></div>
+			<button class="recenter-btn" onclick="camX=0;camY=0;renderCanvas();" title="Re-center">&#x2316;</button>
+		</div>
+		<div class="game-list">
+			<div class="game-list-header">Recent Games</div>
+			<div class="game-list-items" id="game-list-items"></div>
+		</div>
+	</div>
 
+<script src="/src/hex.js"></script>
 <script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const gameListEl = document.getElementById("game-list-items");
+
 let _userinfo = null;
+let _games = [];
+let _selectedGameId = null;
+let _selectedGameState = null;
+
+// Camera panning
+let camX = 0, camY = 0;
+let dragging = false, dragStartX = 0, dragStartY = 0, camStartX = 0, camStartY = 0;
 
 function getSessionId() {
 	return localStorage.getItem("session_id");
@@ -60,8 +123,8 @@ function setUserinfo(val) {
 
 function renderHeader() {
 	const el = document.getElementById("header-right");
+	el.innerHTML = "";
 	if (_userinfo) {
-		el.innerHTML = "";
 		const span = document.createElement("span");
 		span.className = "username";
 		span.textContent = _userinfo.username;
@@ -72,7 +135,6 @@ function renderHeader() {
 		btn.onclick = doLogout;
 		el.appendChild(btn);
 	} else {
-		el.innerHTML = "";
 		const btn = document.createElement("button");
 		btn.className = "btn-primary btn-small";
 		btn.textContent = "Login";
@@ -147,7 +209,121 @@ async function createPrivate() {
 	}
 }
 
-loadUser();
+// -- Game list and viewer --
+
+function renderGameList() {
+	gameListEl.innerHTML = "";
+	for (const game of _games) {
+		const entry = document.createElement("div");
+		entry.className = "game-entry" + (game.game_id === _selectedGameId ? " selected" : "");
+		entry.onmouseenter = () => previewGame(game.game_id);
+		entry.onclick = () => { window.location.href = "/game/" + game.game_id; };
+
+		const p1 = document.createElement("span");
+		p1.className = "p1";
+		p1.textContent = game.p1_uname || "???";
+
+		const mid = document.createElement("span");
+		mid.className = "moves";
+		mid.textContent = "Move " + game.total_moves;
+
+		const p2 = document.createElement("span");
+		p2.className = "p2";
+		p2.textContent = game.p2_uname || "???";
+
+		if (game.is_complete && game.winner_index === 1) {
+			p1.classList.add("winner");
+		} else if (game.is_complete && game.winner_index === 2) {
+			p2.classList.add("winner");
+		} else if (game.is_complete && game.winner_index === 0) {
+			p1.classList.add("draw");
+			p2.classList.add("draw");
+		}
+
+		entry.appendChild(p1);
+		entry.appendChild(mid);
+		entry.appendChild(p2);
+		gameListEl.appendChild(entry);
+	}
+}
+
+async function previewGame(gameId) {
+	if (gameId === _selectedGameId) return;
+	_selectedGameId = gameId;
+	camX = 0; camY = 0;
+	renderGameList();
+	await fetchSelectedGameState();
+}
+
+async function fetchSelectedGameState() {
+	if (!_selectedGameId) {
+		_selectedGameState = null;
+		renderCanvas();
+		return;
+	}
+	const r = await api("GET", "/api/game/" + _selectedGameId);
+	if (r.status === 200) {
+		_selectedGameState = r.data;
+	} else {
+		_selectedGameState = null;
+	}
+	renderCanvas();
+}
+
+function renderCanvas() {
+	const moves = _selectedGameState ? _selectedGameState.moves : null;
+	renderHexGrid(canvas, ctx, camX, camY, moves);
+}
+
+async function loadGames() {
+	const r = await api("POST", "/api/games");
+	if (r.status === 200 && Array.isArray(r.data)) {
+		_games = r.data;
+		// Default to most recent game if nothing selected
+		if (!_selectedGameId && _games.length > 0) {
+			_selectedGameId = _games[0].game_id;
+		}
+		renderGameList();
+		await fetchSelectedGameState();
+	}
+}
+
+// -- Panning --
+
+canvas.addEventListener("mousedown", (e) => {
+	dragging = true;
+	dragStartX = e.clientX;
+	dragStartY = e.clientY;
+	camStartX = camX;
+	camStartY = camY;
+});
+
+window.addEventListener("mousemove", (e) => {
+	if (!dragging) return;
+	camX = camStartX - (e.clientX - dragStartX);
+	camY = camStartY - (e.clientY - dragStartY);
+	renderCanvas();
+});
+
+window.addEventListener("mouseup", () => {
+	dragging = false;
+});
+
+// -- Resize --
+
+window.addEventListener("resize", renderCanvas);
+
+// -- Init --
+
+async function init() {
+	await loadUser();
+	await loadGames();
+	// Refresh game list and viewer every 10 seconds
+	setInterval(async () => {
+		await loadGames();
+	}, 10000);
+}
+init();
 </script>
 </body>
 </html>

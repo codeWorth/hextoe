@@ -19,6 +19,7 @@ Game
  - winner id (default NULL)
  - is_complete (default false)
  - creation time
+ - most recent move time
  - public game (bool)
 
 Move
@@ -148,6 +149,9 @@ POST /api/game/forfeit/<game id> takes nothing, returns nothing
     If both players are present, sets winner to the other player and marks game complete, returns 204
     If only one player is present, marks game complete with no winner, returns 204
 
+
+GET /api/games takes nothing, returns json
+	Returns a list of 
 
 Some additional game mechanics:
 

@@ -4,63 +4,70 @@
 	<title>HexToe - Game</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
-		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; flex-direction: column; }
+		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2b2b2b; color: #d4d4d4; min-height: 100vh; display: flex; flex-direction: column; }
 
 		.header {
 			display: flex; justify-content: space-between; align-items: center;
-			padding: 12px 32px; background: #16213e; border-bottom: 2px solid #0f3460;
+			padding: 12px 32px; background: #232323; border-bottom: 2px solid #3a3a3a;
 		}
-		.header h1 { font-size: 24px; color: #e94560; letter-spacing: 2px; cursor: pointer; }
+		.header h1 { font-size: 24px; color: #5e8c61; letter-spacing: 2px; cursor: pointer; }
 		.header-right { display: flex; align-items: center; gap: 16px; }
-		.header-right .username { color: #a8b2d1; font-size: 16px; }
-		.btn-primary { background: #e94560; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
-		.btn-primary:hover { background: #c73e54; }
-		.btn-secondary { background: #0f3460; color: #eee; border: none; border-radius: 6px; padding: 6px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
-		.btn-secondary:hover { background: #1a4a8a; }
+		.header-right .username { color: #aaa; font-size: 16px; }
+		.btn-primary { background: #4a7c4f; color: #eee; border: none; border-radius: 6px; padding: 6px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+		.btn-primary:hover { background: #5e8c61; }
+		.btn-secondary { background: #3a3a3a; color: #d4d4d4; border: none; border-radius: 6px; padding: 6px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+		.btn-secondary:hover { background: #4a4a4a; }
 
 		.game-container {
-			display: flex; flex: 1; overflow: hidden;
+			display: flex; flex: 1; overflow: hidden; min-height: 0;
 		}
 		.canvas-area {
-			flex: 1; display: flex; align-items: center; justify-content: center;
-			padding: 16px; position: relative;
+			flex: 1; position: relative; padding: 16px; display: flex;
 		}
-		canvas { background: #0f0f23; border-radius: 8px; }
+		.canvas-wrap { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+		canvas { background: #252525; border-radius: 8px; }
 		.recenter-btn {
 			position: absolute; bottom: 28px; right: 28px;
 			width: 36px; height: 36px; border: none; border-radius: 6px;
-			background: rgba(15, 52, 96, 0.8); color: #a8b2d1; font-size: 20px;
+			background: rgba(58, 58, 58, 0.8); color: #999; font-size: 20px;
 			cursor: pointer; display: flex; align-items: center; justify-content: center;
 		}
-		.recenter-btn:hover { background: rgba(15, 52, 96, 1); color: #eee; }
+		.recenter-btn:hover { background: rgba(74, 74, 74, 1); color: #d4d4d4; }
 		.forfeit-btn {
 			border: none; border-radius: 6px; padding: 8px 14px; margin-top: 12px;
-			background: #3d1a1a; color: #f77; font-size: 13px; font-weight: 600;
+			background: #3a3a3a; color: #999; font-size: 13px; font-weight: 600;
 			cursor: pointer; width: 100%;
 		}
-		.forfeit-btn:hover { background: #5a2020; }
+		.forfeit-btn:hover { background: #4a4a4a; color: #ccc; }
 
 		.sidebar {
-			width: 280px; background: #16213e; border-left: 2px solid #0f3460;
-			display: flex; flex-direction: column; padding: 16px;
+			width: 280px; background: #232323; border-left: 2px solid #3a3a3a;
+			display: flex; flex-direction: column; padding: 16px; min-height: 0;
 		}
 		.turn-indicator {
 			padding: 12px; text-align: center; font-size: 16px; font-weight: 600;
 			border-radius: 6px; margin-bottom: 12px;
 		}
-		.turn-yours { background: #1b4332; color: #52b788; }
-		.turn-waiting { background: #3d2b1f; color: #e09f3e; }
-		.turn-over { background: #2b1b2e; color: #a855f7; }
+		.turn-yours { background: #2a3a2a; color: #5e8c61; }
+		.turn-waiting { background: #333; color: #999; }
+		.turn-over { background: #333; color: #aaa; }
 
-		.move-list-header { font-size: 14px; color: #a8b2d1; margin-bottom: 8px; }
+		.player-info { margin-bottom: 12px; font-size: 14px; }
+		.player-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+		.player-symbol { font-weight: 700; width: 16px; text-align: center; }
+		.player-symbol.x { color: #cc9999; }
+		.player-symbol.o { color: #9999cc; }
+		.player-name { color: #bbb; }
+
+		.move-list-header { font-size: 14px; color: #888; margin-bottom: 8px; }
 		.move-list {
-			flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+			flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px;
 		}
 		.move-item {
 			padding: 6px 10px; border-radius: 4px; font-size: 13px; font-family: monospace;
 		}
-		.move-p1 { background: #1a2744; color: #6ea8fe; }
-		.move-p2 { background: #2a1a1a; color: #f77; }
+		.move-p1 { background: #3a2a2a; color: #cc9999; }
+		.move-p2 { background: #2a2a3a; color: #9999cc; }
 	</style>
 </head>
 <body>
@@ -70,17 +77,19 @@
 	</div>
 	<div class="game-container">
 		<div class="canvas-area">
-			<canvas id="canvas"></canvas>
+			<div class="canvas-wrap"><canvas id="canvas"></canvas></div>
 			<button class="recenter-btn" onclick="camX=0;camY=0;render();" title="Re-center">&#x2316;</button>
 		</div>
 		<div class="sidebar">
 			<div class="turn-indicator" id="turn-indicator"></div>
+			<div class="player-info" id="player-info"></div>
 			<div class="move-list-header">Move History</div>
 			<div class="move-list" id="move-list"></div>
 			<button class="forfeit-btn" id="forfeit-btn" onclick="doForfeit()">Forfeit</button>
 		</div>
 	</div>
 
+<script src="/src/hex.js"></script>
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -91,11 +100,6 @@ const turnEl = document.getElementById("turn-indicator");
 const pathParts = window.location.pathname.split("/");
 const gameId = pathParts[pathParts.length - 1];
 
-// Hex layout constants
-const HEX_SIZE = 28;
-const HEX_W = Math.sqrt(3) * HEX_SIZE;
-const HEX_H = 2 * HEX_SIZE;
-
 // Viewport: camera offset in pixel space
 let camX = 0, camY = 0;
 let dragging = false, dragStartX = 0, dragStartY = 0, camStartX = 0, camStartY = 0;
@@ -104,6 +108,7 @@ let _gameState = null;
 let pollTimer = null;
 let myUserId = null;
 let myUsername = null;
+let maxMoveId = -1;
 
 function getSessionId() {
 	return localStorage.getItem("session_id");
@@ -149,6 +154,7 @@ async function doLogout() {
 function setGameState(val) {
 	_gameState = val;
 	render();
+	renderPlayerInfo();
 	renderMoveList();
 	renderTurnIndicator();
 }
@@ -189,138 +195,45 @@ async function makeMove(a, r, c) {
 	}
 }
 
-// -- Hex coordinate <-> pixel conversion --
-// HECS: (a, r, c) where a is row parity (0 or 1)
-// We treat a=0 rows as "even" and a=1 rows as "odd" (shifted right)
-
-function hexToPixel(a, r, c) {
-	// Each (a, r, c) maps to a hex center in pixel space
-	// Row index in the grid: row = r * 2 + a
-	const row = r * 2 + a;
-	const px = c * HEX_W + (row % 2 !== 0 ? HEX_W / 2 : 0);
-	const py = row * HEX_H * 0.75;
-	return { x: px, y: py };
-}
-
-function pixelToHex(px, py) {
-	// Inverse: find closest hex center
-	// Approximate row first
-	const rowApprox = py / (HEX_H * 0.75);
-	const rowRound = Math.round(rowApprox);
-
-	// Try a few candidate rows and find the closest hex
-	let bestDist = Infinity, bestA = 0, bestR = 0, bestC = 0;
-	for (let rowOff = -1; rowOff <= 1; rowOff++) {
-		const row = rowRound + rowOff;
-		const a = ((row % 2) + 2) % 2;
-		const r = (row - a) / 2;
-		const xOff = (row % 2 === 1) ? HEX_W / 2 : 0;
-		const cApprox = (px - xOff) / HEX_W;
-		for (let cOff = -1; cOff <= 1; cOff++) {
-			const c = Math.round(cApprox) + cOff;
-			const center = hexToPixel(a, r, c);
-			const dx = px - center.x;
-			const dy = py - center.y;
-			const dist = dx * dx + dy * dy;
-			if (dist < bestDist) {
-				bestDist = dist;
-				bestA = a; bestR = r; bestC = c;
-			}
-		}
-	}
-	return { a: bestA, r: bestR, c: bestC };
-}
-
 // -- Drawing --
 
-function drawHex(cx, cy, size, fill, stroke) {
-	ctx.beginPath();
-	for (let i = 0; i < 6; i++) {
-		const angle = Math.PI / 180 * (60 * i - 30);
-		const x = cx + size * Math.cos(angle);
-		const y = cy + size * Math.sin(angle);
-		if (i === 0) ctx.moveTo(x, y);
-		else ctx.lineTo(x, y);
-	}
-	ctx.closePath();
-	if (fill) { ctx.fillStyle = fill; ctx.fill(); }
-	if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
-}
-
-function drawX(cx, cy, size) {
-	const s = size * 0.45;
-	ctx.strokeStyle = "#6ea8fe";
-	ctx.lineWidth = 3;
-	ctx.lineCap = "round";
-	ctx.beginPath();
-	ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s);
-	ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s);
-	ctx.stroke();
-}
-
-function drawO(cx, cy, size) {
-	const r = size * 0.4;
-	ctx.strokeStyle = "#f77";
-	ctx.lineWidth = 3;
-	ctx.lineCap = "round";
-	ctx.beginPath();
-	ctx.arc(cx, cy, r, 0, Math.PI * 2);
-	ctx.stroke();
-}
-
 function render() {
-	const dpr = window.devicePixelRatio || 1;
-	const rect = canvas.parentElement.getBoundingClientRect();
-	const w = rect.width - 32;
-	const h = rect.height - 32;
-	canvas.style.width = w + "px";
-	canvas.style.height = h + "px";
-	canvas.width = w * dpr;
-	canvas.height = h * dpr;
-	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+	const moves = _gameState ? _gameState.moves : null;
+	renderHexGrid(canvas, ctx, camX, camY, moves);
+}
 
-	ctx.clearRect(0, 0, w, h);
-
-	// Center of canvas in pixel coords
-	const centerX = w / 2 + camX;
-	const centerY = h / 2 + camY;
-
-	// Determine visible range of rows and columns
-	const visRows = Math.ceil(h / (HEX_H * 0.75)) + 4;
-	const visCols = Math.ceil(w / HEX_W) + 4;
-
-	// Draw background hex grid
-	const centerRow = Math.round((centerY - h / 2) / (HEX_H * 0.75));
-	const centerCol = Math.round((centerX - w / 2) / HEX_W);
-
-	for (let dr = -visRows; dr <= visRows; dr++) {
-		const row = centerRow + dr;
-		const a = ((row % 2) + 2) % 2;
-		const r = (row - a) / 2;
-		for (let dc = -visCols; dc <= visCols; dc++) {
-			const c = centerCol + dc;
-			const pos = hexToPixel(a, r, c);
-			const sx = pos.x - camX + w / 2;
-			const sy = pos.y - camY + h / 2;
-			if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
-			drawHex(sx, sy, HEX_SIZE, "#141428", "#2a2a4a");
-		}
-	}
-
+function renderPlayerInfo() {
+	const el = document.getElementById("player-info");
+	el.innerHTML = "";
 	if (!_gameState) return;
 
-	// Draw moves
-	for (const move of _gameState.moves) {
-		const pos = hexToPixel(move.a, move.r, move.c);
-		const sx = pos.x - camX + w / 2;
-		const sy = pos.y - camY + h / 2;
-		if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
+	let p1Name = _gameState.p1_username || "???";
+	let p2Name = _gameState.p2_username || "???";
 
-		const fill = move.p1 ? "#1a2744" : "#2a1a1a";
-		drawHex(sx, sy, HEX_SIZE, fill, move.p1 ? "#3a5a8a" : "#6a3a3a");
-		if (move.p1) drawX(sx, sy, HEX_SIZE);
-		else drawO(sx, sy, HEX_SIZE);
+	// If both are Anonymous and we're in the game, label ourselves "You"
+	const isP1 = myUserId && myUserId === _gameState.player_id_1;
+	const isP2 = myUserId && myUserId === _gameState.player_id_2;
+	if (p1Name === "Anonymous" && p2Name === "Anonymous") {
+		if (isP1) p1Name = "You";
+		else if (isP2) p2Name = "You";
 	}
+
+	function makeRow(symbol, symbolClass, name) {
+		const row = document.createElement("div");
+		row.className = "player-row";
+		const sym = document.createElement("span");
+		sym.className = "player-symbol " + symbolClass;
+		sym.textContent = symbol;
+		const nm = document.createElement("span");
+		nm.className = "player-name";
+		nm.textContent = name;
+		row.appendChild(sym);
+		row.appendChild(nm);
+		return row;
+	}
+
+	el.appendChild(makeRow("X", "x", p1Name));
+	el.appendChild(makeRow("O", "o", p2Name));
 }
 
 function renderMoveList() {
@@ -361,7 +274,7 @@ function renderTurnIndicator() {
 			turnEl.className = "turn-indicator turn-yours";
 			const btn = document.createElement("button");
 			btn.textContent = "Join Game";
-			btn.style.cssText = "background:#e94560;color:#fff;border:none;border-radius:4px;padding:8px 20px;font-size:15px;font-weight:600;cursor:pointer;";
+			btn.style.cssText = "background:#4a7c4f;color:#eee;border:none;border-radius:4px;padding:8px 20px;font-size:15px;font-weight:600;cursor:pointer;";
 			btn.onclick = joinThisGame;
 			turnEl.appendChild(btn);
 		}

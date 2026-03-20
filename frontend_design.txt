@@ -12,9 +12,8 @@ The homepage has:
  - a header bar with the game name on the left (HexToe)
  - either login button or username + logoout button on the top right in the header bar
  - Two main buttons; "Play" and "Create Private Room"
- - TODO once back end has required endpoints:
-	- a list of recently created games
-	- a live view of a random currently active game
+ - a list of recently active games
+ - a live view of the selected game from the list (default to most recent)
 
 Homepage functionality:
  - When the user loads the page, js should immediately try to get current user info via the "session_id" http only cookie. If it succeeds, set a variable `userinfo` to the result of that call. If not, set `userinfo` to NULL.
@@ -23,6 +22,10 @@ Homepage functionality:
  - The logout button should simply call the logout endpoint and set `userinfo` to NULL
  - When the user clicks "Play", js should call the join_game endpoint. This returns a game id, and the user should automatically be navigated to "/game/<game_id>"
  - When the user clicks "Create Game", js should call the create_private_game, which returns a game id, and once again automatically navigate to "/game/<game_ids>"
+ - The active games are displayed, as well as a live view of an active game. This is loaded when the page is loaded.
+ - By default, the most recent active game is displayed. The user may mouse over any game entry in the active game list, which will change the display to show that game
+ - The user may click on any game entry in the list, which will send them to the game page with that game's game_id
+ - The user can pan around in the game viewer, but not make any moves
 
 
 Login page (login.html):

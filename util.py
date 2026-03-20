@@ -163,13 +163,16 @@ def get_current_player_id(game: Game, num_moves: int) -> Optional[str]:
 
 # Construct the game state dict for sending to the client.
 # Pass None for asker_id if it's not a logged in request
-def build_game_state(game: Game, moves: list[Move], asker_id: str) -> dict:
+def build_game_state(game: Game, moves: list[Move], asker_id: str,
+                     p1_name: str = None, p2_name: str = None) -> dict:
     is_your_turn = False
     if not game.is_complete and asker_id is not None:
         is_your_turn = asker_id == get_current_player_id(game, len(moves))
     return {
         "player_id_1": game.player_id_1,
         "player_id_2": game.player_id_2,
+        "p1_username": p1_name,
+        "p2_username": p2_name,
         "winner_id": game.winner_id,
         "is_your_turn": is_your_turn,
         "moves": [{
@@ -202,3 +205,13 @@ def validate_move(a: int, r: int, c: int, existing_moves: list[Move]) -> Optiona
             return MOVE_TOO_FAR
 
     return None
+
+
+# Get the winner index, 0 if neither, 1 if p1, 2 if p2
+def winner_index(pid1, pid2, winner_id):
+    if winner_id == pid1:
+        return 1
+    if winner_id == pid2:
+        return 2
+
+    return 0
