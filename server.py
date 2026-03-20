@@ -50,6 +50,21 @@ def on_startup():
 
 # -- Webpages --
 
+@app.get("/")
+def serve_home():
+    return FileResponse("home.html")
+
+
+@app.get("/login")
+def serve_login():
+    return FileResponse("login.html")
+
+
+@app.get("/game/{game_id}")
+def serve_game(game_id: str):
+    return FileResponse("game.html")
+
+
 @app.get("/test")
 def serve_test():
     return FileResponse("test.html")
@@ -232,6 +247,16 @@ def logout(session_id: str = Header(...)):
         db.commit()
 
 
+def _do_join_game(open_game: Game, user: User, db: Session) -> str:
+    if open_game.player_id_1 is None:
+        open_game.player_id_1 = user.user_id
+    else:
+        open_game.player_id_2 = user.user_id
+    db.add(open_game)
+    db.commit()
+    return open_game.game_id
+
+
 # Join a game which is looking for a player, or create a public game for
 # others to join. If we already are looking for a game, we just return that
 # game id.
@@ -240,13 +265,15 @@ def join_game(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
 
-        # Check if user is already in an in-progress game
+        # Check if user is already in an in-progress game, join the most recent
+        # one if so
         existing = db.exec(
             select(Game).where(
                 Game.is_complete == False,
                 (Game.player_id_1 == user.user_id) | (Game.player_id_2 == user.user_id),
                 Game.is_public == True,
             )
+            .order_by(Game.creation_time.desc())
         ).first()
         if existing:
             return existing.game_id
@@ -262,13 +289,7 @@ def join_game(session_id: str = Header(...)):
         ).first()
 
         if open_game:
-            if open_game.player_id_1 is None:
-                open_game.player_id_1 = user.user_id
-            else:
-                open_game.player_id_2 = user.user_id
-            db.add(open_game)
-            db.commit()
-            return open_game.game_id
+            return _do_join_game(open_game, user, db)
 
         # No open game, create a new one. We randomly decide if we'll be player 1
         # or player 2
@@ -280,6 +301,25 @@ def join_game(session_id: str = Header(...)):
         db.add(game)
         db.commit()
         return game.game_id
+
+
+@app.post("/api/game/join/{game_id}", response_model=str)
+def join_specific_game(game_id: str, session_id: str = Header(...)):
+    with Session(engine) as db:
+        user = require_valid_session(session_id, db)
+        game = db.exec(
+            select(Game).where(
+                Game.game_id == game_id,
+                Game.is_complete == False,
+                (Game.player_id_1 == None) | (Game.player_id_2 == None),
+                or_(Game.player_id_1 == None, Game.player_id_1 != user.user_id),
+                or_(Game.player_id_2 == None, Game.player_id_2 != user.user_id),
+            )
+        ).first()
+        if not game:
+            raise HTTPException(status_code=404)
+
+        return _do_join_game(game, user, db)
 
 
 # Create a private game. This game ID can be manually shared by users to invite

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>HexToe</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }
+
+		.header {
+			display: flex; justify-content: space-between; align-items: center;
+			padding: 16px 32px; background: #16213e; border-bottom: 2px solid #0f3460;
+		}
+		.header h1 { font-size: 28px; color: #e94560; letter-spacing: 2px; }
+		.header-right { display: flex; align-items: center; gap: 16px; }
+		.header-right .username { color: #a8b2d1; font-size: 16px; }
+
+		button {
+			padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer;
+			font-size: 16px; font-weight: 600; transition: background 0.2s;
+		}
+		.btn-primary { background: #e94560; color: #fff; }
+		.btn-primary:hover { background: #c73e54; }
+		.btn-secondary { background: #0f3460; color: #eee; }
+		.btn-secondary:hover { background: #1a4a8a; }
+		.btn-small { padding: 6px 16px; font-size: 14px; }
+
+		.main {
+			display: flex; flex-direction: column; align-items: center;
+			justify-content: center; padding: 80px 32px; gap: 24px;
+		}
+		.main button { width: 280px; padding: 18px; font-size: 20px; }
+	</style>
+</head>
+<body>
+	<div class="header">
+		<h1>HexToe</h1>
+		<div class="header-right" id="header-right"></div>
+	</div>
+	<div class="main">
+		<button class="btn-primary" onclick="play()">Play</button>
+		<button class="btn-secondary" onclick="createPrivate()">Create Private Room</button>
+	</div>
+
+<script>
+let _userinfo = null;
+
+function getSessionId() {
+	return localStorage.getItem("session_id");
+}
+
+function setSessionId(sid) {
+	if (sid) localStorage.setItem("session_id", sid);
+	else localStorage.removeItem("session_id");
+}
+
+function setUserinfo(val) {
+	_userinfo = val;
+	renderHeader();
+}
+
+function renderHeader() {
+	const el = document.getElementById("header-right");
+	if (_userinfo) {
+		el.innerHTML = "";
+		const span = document.createElement("span");
+		span.className = "username";
+		span.textContent = _userinfo.username;
+		el.appendChild(span);
+		const btn = document.createElement("button");
+		btn.className = "btn-secondary btn-small";
+		btn.textContent = "Logout";
+		btn.onclick = doLogout;
+		el.appendChild(btn);
+	} else {
+		el.innerHTML = "";
+		const btn = document.createElement("button");
+		btn.className = "btn-primary btn-small";
+		btn.textContent = "Login";
+		btn.onclick = () => { window.location.href = "/login"; };
+		el.appendChild(btn);
+	}
+}
+
+async function api(method, path, { body, session } = {}) {
+	const opts = { method, headers: {} };
+	if (body !== undefined) {
+		opts.headers["Content-Type"] = "application/json";
+		opts.body = JSON.stringify(body);
+	}
+	if (session) opts.headers["session-id"] = session;
+	const resp = await fetch(path, opts);
+	let data = null;
+	const text = await resp.text();
+	try { data = JSON.parse(text); } catch { data = text; }
+	return { status: resp.status, data };
+}
+
+async function loadUser() {
+	const sid = getSessionId();
+	if (!sid) { setUserinfo(null); return; }
+	const r = await api("GET", "/api/user", { session: sid });
+	if (r.status === 200) {
+		setUserinfo(r.data);
+	} else {
+		setSessionId(null);
+		setUserinfo(null);
+	}
+}
+
+async function doLogout() {
+	const sid = getSessionId();
+	if (sid) await api("POST", "/api/user/logout", { session: sid });
+	setSessionId(null);
+	setUserinfo(null);
+}
+
+async function ensureSession() {
+	let sid = getSessionId();
+	if (sid) {
+		const r = await api("GET", "/api/user", { session: sid });
+		if (r.status === 200) return sid;
+	}
+	const r = await api("POST", "/api/anon_user");
+	if (r.status === 200) {
+		setSessionId(r.data);
+		await loadUser();
+		return r.data;
+	}
+	return null;
+}
+
+async function play() {
+	const sid = await ensureSession();
+	if (!sid) return;
+	const r = await api("POST", "/api/game/join", { session: sid });
+	if (r.status === 200) {
+		window.location.href = "/game/" + r.data;
+	}
+}
+
+async function createPrivate() {
+	const sid = await ensureSession();
+	if (!sid) return;
+	const r = await api("POST", "/api/game/private", { session: sid });
+	if (r.status === 200) {
+		window.location.href = "/game/" + r.data;
+	}
+}
+
+loadUser();
+</script>
+</body>
+</html>

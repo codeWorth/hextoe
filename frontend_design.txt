@@ -1,0 +1,58 @@
+This lays out requirements for the front end interface.
+It is written in pure HTML/CSS/JS.
+
+There are 3 pages.
+Homepage: "/"
+Login page: "/login"
+Game page: "/game/<game id>"
+
+Homepage (home.html):
+
+The homepage has:
+ - a header bar with the game name on the left (HexToe)
+ - either login button or username + logoout button on the top right in the header bar
+ - Two main buttons; "Play" and "Create Private Room"
+ - TODO once back end has required endpoints:
+	- a list of recently created games
+	- a live view of a random currently active game
+
+Homepage functionality:
+ - When the user loads the page, js should immediately try to get current user info via the "session_id" http only cookie. If it succeeds, set a variable `userinfo` to the result of that call. If not, set `userinfo` to NULL.
+ - Whenever we set `userinfo` (via a setter), update the login/logout interface in the top right. There should be a login button if `userinfo` is NULL, and the user's username + a logout button otherwise.
+ - The login button should send the user to the "/login" page.
+ - The logout button should simply call the logout endpoint and set `userinfo` to NULL
+ - When the user clicks "Play", js should call the join_game endpoint. This returns a game id, and the user should automatically be navigated to "/game/<game_id>"
+ - When the user clicks "Create Game", js should call the create_private_game, which returns a game id, and once again automatically navigate to "/game/<game_ids>"
+
+
+Login page (login.html):
+
+The login page has:
+ - a header bar with the game name on the left
+ - a username text box
+ - a password text box
+ - "Login" button below
+ - "Create Account" button below as well
+
+Login page functionality:
+ - When the user clicks login, it should send that username and password to the login endpoint, and hopefully set the session_id cookie when it returns from the endpoint. If it gets 403, that information must be reflected to the user. The same applies to create account, except that calls the endpoint for create_user.
+ - Whenever we successfully login or create an account, and the sessiond_id has been set, we navigate back to the homepage.
+
+
+Game page (game.html):
+
+The game page has:
+- Header with game title and login/logout button in top right, same as homepage
+- A large HTML canvas for the main game area
+- a scrollable list of move history on the right hand side
+- text above the move history indicating if it is the current user's turn
+- A button above the move history prompting the user to join the match
+
+Game page functionality:
+ - The game state should be stored in `game_state`. Whenever `game_state` is set, clear and redraw the canvas based on its content. To draw it, draw a hexagonal grid over the entire canvas. Then, populate the hexagonal grid with Xs and Os based on the moves list. Any hexagonal tile indicated with p1 == true should have an x at the tile at <a, r, c>, whereas p1 == false should have an O at that tile.
+ - Every 5 seconds, request the game state from the server via `get_game`. Update `game_state` via the setter, which will update the canvas.
+ - If the game state says is_your_turn is true, and the player clicks on a tile, send a make_move request to the server with that tile's location. The response will be the new game state, which will update the canvas.
+ - Above the move history, there can be either text or a button. If the current user is already in this game, it displays:
+    - A "Join Game" button if there is only 1 player ID in this game AND it's not the current user. This should trigger the join_specific_game endpoint. Otherwise...
+	- Text saying "Waiting for opponent..." if there is only 1 player id in this game. Otherwise...
+	- Text saying "Your Turn" if is_your_turn is true, "Opponent's Turn" if is_your_turn is false

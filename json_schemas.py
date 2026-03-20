@@ -28,6 +28,7 @@ class MoveResponse(BaseModel):
     a: int
     r: int
     c: int
+    p1: bool
 
 
 class GameStateResponse(BaseModel):

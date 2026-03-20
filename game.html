@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>HexToe - Game</title>
+	<style>
+		* { margin: 0; padding: 0; box-sizing: border-box; }
+		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; display: flex; flex-direction: column; }
+
+		.header {
+			display: flex; justify-content: space-between; align-items: center;
+			padding: 12px 32px; background: #16213e; border-bottom: 2px solid #0f3460;
+		}
+		.header h1 { font-size: 24px; color: #e94560; letter-spacing: 2px; cursor: pointer; }
+		.header-right { display: flex; align-items: center; gap: 16px; }
+		.header-right .username { color: #a8b2d1; font-size: 16px; }
+		.btn-primary { background: #e94560; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+		.btn-primary:hover { background: #c73e54; }
+		.btn-secondary { background: #0f3460; color: #eee; border: none; border-radius: 6px; padding: 6px 16px; font-size: 14px; font-weight: 600; cursor: pointer; }
+		.btn-secondary:hover { background: #1a4a8a; }
+
+		.game-container {
+			display: flex; flex: 1; overflow: hidden;
+		}
+		.canvas-area {
+			flex: 1; display: flex; align-items: center; justify-content: center;
+			padding: 16px; position: relative;
+		}
+		canvas { background: #0f0f23; border-radius: 8px; }
+		.recenter-btn {
+			position: absolute; bottom: 28px; right: 28px;
+			width: 36px; height: 36px; border: none; border-radius: 6px;
+			background: rgba(15, 52, 96, 0.8); color: #a8b2d1; font-size: 20px;
+			cursor: pointer; display: flex; align-items: center; justify-content: center;
+		}
+		.recenter-btn:hover { background: rgba(15, 52, 96, 1); color: #eee; }
+		.forfeit-btn {
+			border: none; border-radius: 6px; padding: 8px 14px; margin-top: 12px;
+			background: #3d1a1a; color: #f77; font-size: 13px; font-weight: 600;
+			cursor: pointer; width: 100%;
+		}
+		.forfeit-btn:hover { background: #5a2020; }
+
+		.sidebar {
+			width: 280px; background: #16213e; border-left: 2px solid #0f3460;
+			display: flex; flex-direction: column; padding: 16px;
+		}
+		.turn-indicator {
+			padding: 12px; text-align: center; font-size: 16px; font-weight: 600;
+			border-radius: 6px; margin-bottom: 12px;
+		}
+		.turn-yours { background: #1b4332; color: #52b788; }
+		.turn-waiting { background: #3d2b1f; color: #e09f3e; }
+		.turn-over { background: #2b1b2e; color: #a855f7; }
+
+		.move-list-header { font-size: 14px; color: #a8b2d1; margin-bottom: 8px; }
+		.move-list {
+			flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+		}
+		.move-item {
+			padding: 6px 10px; border-radius: 4px; font-size: 13px; font-family: monospace;
+		}
+		.move-p1 { background: #1a2744; color: #6ea8fe; }
+		.move-p2 { background: #2a1a1a; color: #f77; }
+	</style>
+</head>
+<body>
+	<div class="header">
+		<h1 onclick="window.location.href='/'">HexToe</h1>
+		<div class="header-right" id="header-right"></div>
+	</div>
+	<div class="game-container">
+		<div class="canvas-area">
+			<canvas id="canvas"></canvas>
+			<button class="recenter-btn" onclick="camX=0;camY=0;render();" title="Re-center">&#x2316;</button>
+		</div>
+		<div class="sidebar">
+			<div class="turn-indicator" id="turn-indicator"></div>
+			<div class="move-list-header">Move History</div>
+			<div class="move-list" id="move-list"></div>
+			<button class="forfeit-btn" id="forfeit-btn" onclick="doForfeit()">Forfeit</button>
+		</div>
+	</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const moveListEl = document.getElementById("move-list");
+const turnEl = document.getElementById("turn-indicator");
+
+// Extract game_id from URL: /game/<game_id>
+const pathParts = window.location.pathname.split("/");
+const gameId = pathParts[pathParts.length - 1];
+
+// Hex layout constants
+const HEX_SIZE = 28;
+const HEX_W = Math.sqrt(3) * HEX_SIZE;
+const HEX_H = 2 * HEX_SIZE;
+
+// Viewport: camera offset in pixel space
+let camX = 0, camY = 0;
+let dragging = false, dragStartX = 0, dragStartY = 0, camStartX = 0, camStartY = 0;
+
+let _gameState = null;
+let pollTimer = null;
+let myUserId = null;
+let myUsername = null;
+
+function getSessionId() {
+	return localStorage.getItem("session_id");
+}
+
+function setSessionId(sid) {
+	if (sid) localStorage.setItem("session_id", sid);
+	else localStorage.removeItem("session_id");
+}
+
+function renderHeader() {
+	const el = document.getElementById("header-right");
+	el.innerHTML = "";
+	if (myUsername) {
+		const span = document.createElement("span");
+		span.className = "username";
+		span.textContent = myUsername;
+		el.appendChild(span);
+		const btn = document.createElement("button");
+		btn.className = "btn-secondary";
+		btn.textContent = "Logout";
+		btn.onclick = doLogout;
+		el.appendChild(btn);
+	} else {
+		const btn = document.createElement("button");
+		btn.className = "btn-primary";
+		btn.textContent = "Login";
+		btn.onclick = () => { window.location.href = "/login"; };
+		el.appendChild(btn);
+	}
+}
+
+async function doLogout() {
+	const sid = getSessionId();
+	if (sid) await api("POST", "/api/user/logout", { session: sid });
+	setSessionId(null);
+	myUserId = null;
+	myUsername = null;
+	renderHeader();
+	renderTurnIndicator();
+}
+
+function setGameState(val) {
+	_gameState = val;
+	render();
+	renderMoveList();
+	renderTurnIndicator();
+}
+
+// -- API --
+
+async function api(method, path, { body, session } = {}) {
+	const opts = { method, headers: {} };
+	if (body !== undefined) {
+		opts.headers["Content-Type"] = "application/json";
+		opts.body = JSON.stringify(body);
+	}
+	if (session) opts.headers["session-id"] = session;
+	const resp = await fetch(path, opts);
+	let data = null;
+	const text = await resp.text();
+	try { data = JSON.parse(text); } catch { data = text; }
+	return { status: resp.status, data };
+}
+
+async function fetchGameState() {
+	const sid = getSessionId();
+	const opts = sid ? { session: sid } : {};
+	const r = await api("GET", "/api/game/" + gameId, opts);
+	if (r.status === 200) setGameState(r.data);
+}
+
+async function makeMove(a, r, c) {
+	const sid = getSessionId();
+	if (!sid || !_gameState || !_gameState.is_your_turn) return;
+	const resp = await api("POST", "/api/game/" + gameId, {
+		body: { a, r, c },
+		session: sid,
+	});
+	if (resp.status === 200) {
+		if (resp.data.failure_reason) return;
+		setGameState(resp.data);
+	}
+}
+
+// -- Hex coordinate <-> pixel conversion --
+// HECS: (a, r, c) where a is row parity (0 or 1)
+// We treat a=0 rows as "even" and a=1 rows as "odd" (shifted right)
+
+function hexToPixel(a, r, c) {
+	// Each (a, r, c) maps to a hex center in pixel space
+	// Row index in the grid: row = r * 2 + a
+	const row = r * 2 + a;
+	const px = c * HEX_W + (row % 2 !== 0 ? HEX_W / 2 : 0);
+	const py = row * HEX_H * 0.75;
+	return { x: px, y: py };
+}
+
+function pixelToHex(px, py) {
+	// Inverse: find closest hex center
+	// Approximate row first
+	const rowApprox = py / (HEX_H * 0.75);
+	const rowRound = Math.round(rowApprox);
+
+	// Try a few candidate rows and find the closest hex
+	let bestDist = Infinity, bestA = 0, bestR = 0, bestC = 0;
+	for (let rowOff = -1; rowOff <= 1; rowOff++) {
+		const row = rowRound + rowOff;
+		const a = ((row % 2) + 2) % 2;
+		const r = (row - a) / 2;
+		const xOff = (row % 2 === 1) ? HEX_W / 2 : 0;
+		const cApprox = (px - xOff) / HEX_W;
+		for (let cOff = -1; cOff <= 1; cOff++) {
+			const c = Math.round(cApprox) + cOff;
+			const center = hexToPixel(a, r, c);
+			const dx = px - center.x;
+			const dy = py - center.y;
+			const dist = dx * dx + dy * dy;
+			if (dist < bestDist) {
+				bestDist = dist;
+				bestA = a; bestR = r; bestC = c;
+			}
+		}
+	}
+	return { a: bestA, r: bestR, c: bestC };
+}
+
+// -- Drawing --
+
+function drawHex(cx, cy, size, fill, stroke) {
+	ctx.beginPath();
+	for (let i = 0; i < 6; i++) {
+		const angle = Math.PI / 180 * (60 * i - 30);
+		const x = cx + size * Math.cos(angle);
+		const y = cy + size * Math.sin(angle);
+		if (i === 0) ctx.moveTo(x, y);
+		else ctx.lineTo(x, y);
+	}
+	ctx.closePath();
+	if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+	if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1.5; ctx.stroke(); }
+}
+
+function drawX(cx, cy, size) {
+	const s = size * 0.45;
+	ctx.strokeStyle = "#6ea8fe";
+	ctx.lineWidth = 3;
+	ctx.lineCap = "round";
+	ctx.beginPath();
+	ctx.moveTo(cx - s, cy - s); ctx.lineTo(cx + s, cy + s);
+	ctx.moveTo(cx + s, cy - s); ctx.lineTo(cx - s, cy + s);
+	ctx.stroke();
+}
+
+function drawO(cx, cy, size) {
+	const r = size * 0.4;
+	ctx.strokeStyle = "#f77";
+	ctx.lineWidth = 3;
+	ctx.lineCap = "round";
+	ctx.beginPath();
+	ctx.arc(cx, cy, r, 0, Math.PI * 2);
+	ctx.stroke();
+}
+
+function render() {
+	const dpr = window.devicePixelRatio || 1;
+	const rect = canvas.parentElement.getBoundingClientRect();
+	const w = rect.width - 32;
+	const h = rect.height - 32;
+	canvas.style.width = w + "px";
+	canvas.style.height = h + "px";
+	canvas.width = w * dpr;
+	canvas.height = h * dpr;
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+	ctx.clearRect(0, 0, w, h);
+
+	// Center of canvas in pixel coords
+	const centerX = w / 2 + camX;
+	const centerY = h / 2 + camY;
+
+	// Determine visible range of rows and columns
+	const visRows = Math.ceil(h / (HEX_H * 0.75)) + 4;
+	const visCols = Math.ceil(w / HEX_W) + 4;
+
+	// Draw background hex grid
+	const centerRow = Math.round((centerY - h / 2) / (HEX_H * 0.75));
+	const centerCol = Math.round((centerX - w / 2) / HEX_W);
+
+	for (let dr = -visRows; dr <= visRows; dr++) {
+		const row = centerRow + dr;
+		const a = ((row % 2) + 2) % 2;
+		const r = (row - a) / 2;
+		for (let dc = -visCols; dc <= visCols; dc++) {
+			const c = centerCol + dc;
+			const pos = hexToPixel(a, r, c);
+			const sx = pos.x - camX + w / 2;
+			const sy = pos.y - camY + h / 2;
+			if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
+			drawHex(sx, sy, HEX_SIZE, "#141428", "#2a2a4a");
+		}
+	}
+
+	if (!_gameState) return;
+
+	// Draw moves
+	for (const move of _gameState.moves) {
+		const pos = hexToPixel(move.a, move.r, move.c);
+		const sx = pos.x - camX + w / 2;
+		const sy = pos.y - camY + h / 2;
+		if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
+
+		const fill = move.p1 ? "#1a2744" : "#2a1a1a";
+		drawHex(sx, sy, HEX_SIZE, fill, move.p1 ? "#3a5a8a" : "#6a3a3a");
+		if (move.p1) drawX(sx, sy, HEX_SIZE);
+		else drawO(sx, sy, HEX_SIZE);
+	}
+}
+
+function renderMoveList() {
+	moveListEl.innerHTML = "";
+	if (!_gameState) return;
+	_gameState.moves.forEach((move, i) => {
+		const el = document.createElement("div");
+		el.className = "move-item " + (move.p1 ? "move-p1" : "move-p2");
+		const label = move.p1 ? "X" : "O";
+		el.textContent = (i + 1) + ". " + label + " (" + move.a + ", " + move.r + ", " + move.c + ")";
+		moveListEl.appendChild(el);
+	});
+	moveListEl.scrollTop = moveListEl.scrollHeight;
+}
+
+function renderTurnIndicator() {
+	turnEl.innerHTML = "";
+	const forfeitBtn = document.getElementById("forfeit-btn");
+	if (!_gameState) {
+		turnEl.textContent = "Loading...";
+		turnEl.className = "turn-indicator turn-waiting";
+		forfeitBtn.style.display = "none";
+		return;
+	}
+	const inProgress = !_gameState.winner_id && _gameState.player_id_1 && _gameState.player_id_2;
+	forfeitBtn.style.display = inProgress ? "" : "none";
+	if (_gameState.winner_id) {
+		turnEl.textContent = "Game Over";
+		turnEl.className = "turn-indicator turn-over";
+	} else if (!_gameState.player_id_1 || !_gameState.player_id_2) {
+		const isPlayer = myUserId && (
+			_gameState.player_id_1 === myUserId || _gameState.player_id_2 === myUserId
+		);
+		if (isPlayer) {
+			turnEl.textContent = "Waiting for opponent...";
+			turnEl.className = "turn-indicator turn-waiting";
+		} else {
+			turnEl.className = "turn-indicator turn-yours";
+			const btn = document.createElement("button");
+			btn.textContent = "Join Game";
+			btn.style.cssText = "background:#e94560;color:#fff;border:none;border-radius:4px;padding:8px 20px;font-size:15px;font-weight:600;cursor:pointer;";
+			btn.onclick = joinThisGame;
+			turnEl.appendChild(btn);
+		}
+	} else if (_gameState.is_your_turn) {
+		turnEl.textContent = "Your turn!";
+		turnEl.className = "turn-indicator turn-yours";
+	} else {
+		turnEl.textContent = "Opponent's turn";
+		turnEl.className = "turn-indicator turn-waiting";
+	}
+}
+
+async function ensureSession() {
+	let sid = getSessionId();
+	if (sid) {
+		const r = await api("GET", "/api/user", { session: sid });
+		if (r.status === 200) { myUserId = r.data.user_id; myUsername = r.data.username; renderHeader(); return sid; }
+	}
+	const r = await api("POST", "/api/anon_user");
+	if (r.status === 200) {
+		setSessionId(r.data);
+		const u = await api("GET", "/api/user", { session: r.data });
+		if (u.status === 200) { myUserId = u.data.user_id; myUsername = u.data.username; renderHeader(); }
+		return r.data;
+	}
+	return null;
+}
+
+async function joinThisGame() {
+	const sid = await ensureSession();
+	if (!sid) return;
+	const r = await api("POST", "/api/game/join/" + gameId, { session: sid });
+	if (r.status === 200) {
+		await fetchGameState();
+	}
+}
+
+async function doForfeit() {
+	const sid = getSessionId();
+	if (!sid || !_gameState) return;
+	const r = await api("POST", "/api/game/forfeit/" + gameId, { session: sid });
+	if (r.status === 204) {
+		await fetchGameState();
+	}
+}
+
+// -- Input handling --
+
+canvas.addEventListener("mousedown", (e) => {
+	dragging = true;
+	dragStartX = e.clientX;
+	dragStartY = e.clientY;
+	camStartX = camX;
+	camStartY = camY;
+});
+
+window.addEventListener("mousemove", (e) => {
+	if (!dragging) return;
+	camX = camStartX - (e.clientX - dragStartX);
+	camY = camStartY - (e.clientY - dragStartY);
+	render();
+});
+
+window.addEventListener("mouseup", (e) => {
+	if (!dragging) return;
+	dragging = false;
+	const dx = e.clientX - dragStartX;
+	const dy = e.clientY - dragStartY;
+	// Only treat as click if barely moved
+	if (Math.abs(dx) < 5 && Math.abs(dy) < 5) {
+		handleClick(e);
+	}
+});
+
+function handleClick(e) {
+	if (!_gameState || !_gameState.is_your_turn) return;
+	const rect = canvas.getBoundingClientRect();
+	const dpr = window.devicePixelRatio || 1;
+	const w = canvas.width / dpr;
+	const h = canvas.height / dpr;
+	const mx = e.clientX - rect.left;
+	const my = e.clientY - rect.top;
+	// Convert screen pixel to world pixel
+	const wx = mx + camX - w / 2;
+	const wy = my + camY - h / 2;
+	const hex = pixelToHex(wx, wy);
+	makeMove(hex.a, hex.r, hex.c);
+}
+
+// -- Resize --
+
+window.addEventListener("resize", () => { render(); });
+
+// -- Init --
+
+async function init() {
+	const sid = getSessionId();
+	if (sid) {
+		const r = await api("GET", "/api/user", { session: sid });
+		if (r.status === 200) {
+			myUserId = r.data.user_id;
+			myUsername = r.data.username;
+		}
+	}
+	renderHeader();
+	await fetchGameState();
+	pollTimer = setInterval(fetchGameState, 5000);
+}
+init();
+</script>
+</body>
+</html>

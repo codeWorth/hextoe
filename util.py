@@ -95,7 +95,7 @@ def is_line_r(moves_tbl, pos) -> bool:
         return False
 
     while count < 6:
-        cr += 1
+        cc += 1
         cv = moves_tbl.get((ca, cr, cc))
         if cv is None or cv != is_p1:
             return False
@@ -106,7 +106,7 @@ def is_line_r(moves_tbl, pos) -> bool:
 
 # Check if there is a connected line of 6 down and to the left.
 #   <0, r, c> -> <1, r, c-1> moves us down and to the left
-#   <1, r, c> -> <0, r-1, c> moves us down and to the left
+#   <1, r, c> -> <0, r+1, c> moves us down and to the left
 def is_line_dl(moves_tbl, pos) -> bool:
     ca, cr, cc = pos
     count = 1
@@ -115,7 +115,7 @@ def is_line_dl(moves_tbl, pos) -> bool:
         return False
 
     while count < 6:
-        cr -= (ca & 1)
+        cr += (ca & 1)
         ca = 1 - ca
         cc -= (ca & 1)
         cv = moves_tbl.get((ca, cr, cc))
@@ -172,7 +172,12 @@ def build_game_state(game: Game, moves: list[Move], asker_id: str) -> dict:
         "player_id_2": game.player_id_2,
         "winner_id": game.winner_id,
         "is_your_turn": is_your_turn,
-        "moves": [{"a": int(m.a), "r": m.r, "c": m.c} for m in moves],
+        "moves": [{
+                    "a": int(m.a),
+                    "r": m.r,
+                    "c": m.c,
+                    "p1": is_player_one(m.move_index)
+                  } for m in moves],
     }
 
 
