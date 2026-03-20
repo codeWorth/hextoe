@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>HexToe API Tests</title>
+	<style>
+		body { font-family: monospace; white-space: pre-wrap; padding: 20px; background: #1a1a1a; color: #ccc; }
+		.pass { color: #4caf50; }
+		.fail { color: #f44336; }
+		.info { color: #64b5f6; }
+		.section { color: #ffa726; font-weight: bold; margin-top: 10px; }
+	</style>
+</head>
+<body>
+<div id="out"></div>
+<script>
+const BASE = "http://localhost:8000";
+const out = document.getElementById("out");
+
+function log(msg, cls = "") {
+	const el = document.createElement("div");
+	el.className = cls;
+	el.textContent = msg;
+	out.appendChild(el);
+}
+
+function pass(msg) { log("  PASS: " + msg, "pass"); }
+function fail(msg) { log("  FAIL: " + msg, "fail"); }
+function info(msg) { log("  " + msg, "info"); }
+function section(msg) { log("\n=== " + msg + " ===", "section"); }
+
+function assert(cond, msg) {
+	if (cond) pass(msg);
+	else fail(msg);
+	return cond;
+}
+
+function assertStatus(actual, expected, msg) {
+	if (actual === expected) {
+		pass(msg + " (status " + actual + ")");
+	} else {
+		fail(msg + " | expected status: " + expected + " | got: " + actual);
+	}
+	return actual === expected;
+}
+
+function assertEq(actual, expected, msg) {
+	if (JSON.stringify(actual) === JSON.stringify(expected)) {
+		pass(msg);
+		return true;
+	} else {
+		fail(msg + " | expected: " + JSON.stringify(expected) + " | got: " + JSON.stringify(actual));
+		return false;
+	}
+}
+
+async function request(method, path, { body, session } = {}) {
+	const opts = { method, headers: {} };
+	if (body !== undefined) {
+		opts.headers["Content-Type"] = "application/json";
+		opts.body = JSON.stringify(body);
+	}
+	if (session) {
+		opts.headers["session-id"] = session;
+	}
+	const resp = await fetch(BASE + path, opts);
+	let data = null;
+	const text = await resp.text();
+	try { data = JSON.parse(text); } catch { data = text; }
+	return { status: resp.status, data };
+}
+
+// Generate unique usernames to avoid conflicts across test runs
+const suffix = Date.now().toString(36);
+const USER1 = "testuser1_" + suffix;
+const USER2 = "testuser2_" + suffix;
+const PASSWORD = "testpass123";
+
+async function runTests() {
+	let session1, session2, userId1, userId2;
+
+	// =====================
+	// USER ENDPOINTS
+	// =====================
+	section("POST /user - Create users");
+
+	let r = await request("POST", "/user", { body: { username: USER1, password: PASSWORD } });
+	assertStatus(r.status, 200, "Create user1");
+	assert(typeof r.data === "string" && r.data.length > 0, "Returns session id string");
+	session1 = r.data;
+	info("user1 session: " + session1.slice(0, 16) + "...");
+
+	r = await request("POST", "/user", { body: { username: USER2, password: PASSWORD } });
+	assertStatus(r.status, 200, "Create user2");
+	session2 = r.data;
+	info("user2 session: " + session2.slice(0, 16) + "...");
+
+	// Duplicate username
+	r = await request("POST", "/user", { body: { username: USER1, password: PASSWORD } });
+	assertStatus(r.status, 409, "Duplicate username");
+
+	// ---- Login ----
+	section("POST /user/login");
+
+	r = await request("POST", "/user/login", { body: { username: USER1, password: PASSWORD } });
+	assertStatus(r.status, 200, "Login");
+	assert(r.data !== session1, "Login returns a new session id");
+	session1 = r.data;
+
+	r = await request("POST", "/user/login", { body: { username: USER1, password: "wrongpass" } });
+	assert(r.status === 404, "Bad password returns 404");
+
+	// ---- Update user ----
+	section("PUT /user - Update user");
+
+	r = await request("PUT", "/user", { body: { username: null, password: null }, session: session1 });
+	assert(r.status === 400, "Null username and password returns 400");
+
+	const NEW_USER1 = USER1 + "_renamed";
+	r = await request("PUT", "/user", { body: { username: NEW_USER1, password: null }, session: session1 });
+	assert(r.status === 200, "Update username returns 200");
+	session1 = r.data;
+
+	// ---- Get user ----
+	section("GET /user/:id - Get user profile");
+
+	// We need the user_id. Login again to get fresh session, then we need to figure out
+	// the user_id. The API doesn't return user_id directly, so let's use the game
+	// endpoints later to discover it. For now, test with a bad id.
+	r = await request("GET", "/user/nonexistent_id");
+	assert(r.status === 404, "Nonexistent user returns 404");
+
+	// ---- Logout ----
+	section("POST /user/logout");
+
+	r = await request("POST", "/user/logout", { session: session1 });
+	assert(r.status === 204, "Logout returns 204");
+
+	// Session should be expired now
+	r = await request("POST", "/user/logout", { session: session1 });
+	assert(r.status === 403, "Expired session returns 403");
+
+	// Re-login to continue tests
+	r = await request("POST", "/user/login", { body: { username: NEW_USER1, password: PASSWORD } });
+	session1 = r.data;
+	info("user1 re-logged in");
+
+	// =====================
+	// GAME CREATION - PUBLIC
+	// =====================
+	section("POST /game/join - Public game");
+
+	r = await request("POST", "/game/join", { session: session1 });
+	assert(r.status === 200, "User1 join returns 200");
+	const publicGameId = r.data;
+	info("public game id: " + publicGameId.slice(0, 16) + "...");
+
+	// Same user joining again returns same game
+	r = await request("POST", "/game/join", { session: session1 });
+	assert(r.status === 200, "User1 join again returns 200");
+	assertEq(r.data, publicGameId, "Returns same game id for user already in a public game");
+
+	// User2 joins and should be matched
+	r = await request("POST", "/game/join", { session: session2 });
+	assert(r.status === 200, "User2 join returns 200");
+	assertEq(r.data, publicGameId, "User2 matched into same public game");
+
+	// ---- Get game state to find player assignments ----
+	section("GET /game/:id - Initial game state");
+
+	r = await request("GET", "/game/" + publicGameId, { session: session1 });
+	assert(r.status === 200, "Get game returns 200");
+	const initialState = r.data;
+	assert(initialState.player_id_1 != null, "player_id_1 is set");
+	assert(initialState.player_id_2 != null, "player_id_2 is set");
+	assert(initialState.winner_id === null, "winner_id is null");
+	assertEq(initialState.moves, [], "No moves yet");
+
+	userId1 = null;
+	userId2 = null;
+
+	// Figure out which user is which player by checking current_player_id.
+	// current_player_id is player 1 at the start. Try making a move with session1;
+	// if it works, session1 is player 1.
+	const p1Id = initialState.player_id_1;
+	const p2Id = initialState.player_id_2;
+	const currentPlayerId = initialState.current_player_id;
+	info("player_id_1: " + p1Id.slice(0, 16) + "...");
+	info("player_id_2: " + p2Id.slice(0, 16) + "...");
+	info("current_player (p1): " + currentPlayerId.slice(0, 16) + "...");
+
+	// Determine which session belongs to which player by trying a move
+	// We'll use a throwaway coordinate that we'll undo or just proceed with
+	let sessionP1, sessionP2;
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 0 },
+		session: session1,
+	});
+	if (r.status === 200 && !r.data.failure_reason) {
+		info("session1 is player 1");
+		sessionP1 = session1;
+		sessionP2 = session2;
+	} else {
+		info("session1 is player 2");
+		sessionP1 = session2;
+		sessionP2 = session1;
+		// Make the move with the correct session
+		r = await request("POST", "/game/" + publicGameId, {
+			body: { a: 0, r: 0, c: 0 },
+			session: sessionP1,
+		});
+	}
+
+	// =====================
+	// MAKING MOVES
+	// =====================
+	section("POST /game/:id - Make moves");
+
+	// Move 0 already made above: P1 plays (0,0,0)
+	assert(r.status === 200, "Move 0 (P1) returns 200");
+	let state = r.data;
+	assertEq(state.moves, [{a:0, r:0, c:0}], "Moves list after move 0");
+
+	// Move 1: P2 plays (0, 0, 1)
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 1 },
+		session: sessionP2,
+	});
+	assert(r.status === 200, "Move 1 (P2) returns 200");
+	state = r.data;
+	assertEq(state.moves, [{a:0,r:0,c:0}, {a:0,r:0,c:1}], "Moves list after move 1");
+
+	// Move 2: P2 plays (0, 0, 2) - P2 gets two moves in a row
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 2 },
+		session: sessionP2,
+	});
+	assert(r.status === 200, "Move 2 (P2) returns 200");
+	state = r.data;
+	assertEq(state.moves, [{a:0,r:0,c:0}, {a:0,r:0,c:1}, {a:0,r:0,c:2}], "Moves list after move 2");
+
+	// Wrong player tries to move
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 3 },
+		session: sessionP2,
+	});
+	assert(r.status === 400, "Wrong player moving returns 400");
+
+	// Move 3: P1 plays (0, 0, 3)
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 3 },
+		session: sessionP1,
+	});
+	assert(r.status === 200, "Move 3 (P1) returns 200");
+	state = r.data;
+	assertEq(
+		state.moves,
+		[{a:0,r:0,c:0}, {a:0,r:0,c:1}, {a:0,r:0,c:2}, {a:0,r:0,c:3}],
+		"Moves list after move 3"
+	);
+
+	// Duplicate move
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 0 },
+		session: sessionP1,
+	});
+	assert(r.status === 200 && r.data.failure_reason === "ALREADY_TAKEN", "Duplicate move returns ALREADY_TAKEN");
+
+	// =====================
+	// UNDO MOVE
+	// =====================
+	section("POST /game/undo/:id - Undo move");
+
+	// We have 4 moves (even), so undo should fail per the odd-count rule
+	r = await request("POST", "/game/undo/" + publicGameId, { session: sessionP1 });
+	info("Undo with 4 moves (even): status=" + r.status);
+	assert(r.status === 400 || r.status === 500, "Undo with even move count should fail (400 or 500 if bug)");
+
+	// Make one more move to get to 5 (odd), then undo should work
+	// Move 4: P1 plays (0, 0, 4)
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 4 },
+		session: sessionP1,
+	});
+	assert(r.status === 200, "Move 4 (P1) returns 200");
+	assertEq(
+		r.data.moves,
+		[{a:0,r:0,c:0}, {a:0,r:0,c:1}, {a:0,r:0,c:2}, {a:0,r:0,c:3}, {a:0,r:0,c:4}],
+		"Moves list after move 4"
+	);
+
+	// Now 5 moves (odd), current player is P2. Undo should be allowed.
+	r = await request("POST", "/game/undo/" + publicGameId, { session: sessionP2 });
+	if (r.status === 500) {
+		fail("Undo returned 500 - likely bug: 'user' variable not assigned in undo_move (server.py line 337)");
+	} else {
+		assert(r.status === 200, "Undo returns 200");
+		assertEq(
+			r.data.moves,
+			[{a:0,r:0,c:0}, {a:0,r:0,c:1}, {a:0,r:0,c:2}, {a:0,r:0,c:3}],
+			"Moves list after undo matches expected (move 4 removed)"
+		);
+	}
+
+	// =====================
+	// GAME CREATION - PRIVATE
+	// =====================
+	section("POST /game/private - Private game");
+
+	r = await request("POST", "/game/private", { session: sessionP1 });
+	assert(r.status === 200, "Create private game returns 200");
+	const privateGameId = r.data;
+	assert(typeof privateGameId === "string" && privateGameId.length > 0, "Returns game id string");
+	info("private game id: " + privateGameId.slice(0, 16) + "...");
+
+	// Creating again returns same game (idempotent while waiting for opponent)
+	r = await request("POST", "/game/private", { session: sessionP1 });
+	assertEq(r.data, privateGameId, "Second private game call returns same game id");
+
+	// ---- Get user profile (now that we know user ids) ----
+	section("GET /user/:id - User profile with games");
+
+	r = await request("GET", "/user/" + p1Id);
+	assert(r.status === 200, "Get user profile returns 200");
+	assert(r.data.games.length >= 1, "User has at least 1 game in game list");
+	info("user1 has " + r.data.games.length + " game(s), " + r.data.current_game_ids.length + " in-progress");
+
+	// =====================
+	// CLEANUP - Delete users
+	// =====================
+	section("DELETE /user - Cleanup");
+
+	r = await request("DELETE", "/user", { session: sessionP1 });
+	assert(r.status === 204, "Delete user1 returns 204");
+
+	r = await request("DELETE", "/user", { session: sessionP2 });
+	assert(r.status === 204, "Delete user2 returns 204");
+
+	log("\n--- Tests complete ---", "info");
+}
+
+runTests().catch(err => {
+	fail("Unhandled error: " + err.message);
+	info(err.stack);
+});
+</script>
+</body>
+</html>

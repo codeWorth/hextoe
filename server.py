@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Union
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -42,7 +43,14 @@ def on_startup():
     SQLModel.metadata.create_all(engine)
 
 
-# -- HTTP Endpoints --
+# -- Webpages --
+
+@app.get("/test")
+def serve_test():
+    return FileResponse("test.html")
+
+
+# -- HTTP Rest Endpoints --
 
 # Create new user
 @app.post("/user", response_model=str)
@@ -320,7 +328,7 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Header(...)):
 @app.post("/game/undo/{game_id}", response_model=GameStateResponse)
 def undo_move(game_id: str, session_id: str = Header(...)):
     with Session(engine) as db:
-        require_valid_session(session_id, db)
+        user = require_valid_session(session_id, db)
 
         game = db.get(Game, game_id)
         if game is None:
