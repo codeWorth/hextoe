@@ -111,15 +111,6 @@ let myUserId = null;
 let myUsername = null;
 let maxMoveId = -1;
 
-function getSessionId() {
-	return localStorage.getItem("session_id");
-}
-
-function setSessionId(sid) {
-	if (sid) localStorage.setItem("session_id", sid);
-	else localStorage.removeItem("session_id");
-}
-
 function renderHeader() {
 	const el = document.getElementById("header-right");
 	el.innerHTML = "";
@@ -143,9 +134,7 @@ function renderHeader() {
 }
 
 async function doLogout() {
-	const sid = getSessionId();
-	if (sid) await api("POST", "/api/user/logout", { session: sid });
-	setSessionId(null);
+	await api("POST", "/api/user/logout");
 	myUserId = null;
 	myUsername = null;
 	renderHeader();
@@ -162,13 +151,12 @@ function setGameState(val) {
 
 // -- API --
 
-async function api(method, path, { body, session } = {}) {
-	const opts = { method, headers: {} };
+async function api(method, path, { body } = {}) {
+	const opts = { method, headers: {}, credentials: "same-origin" };
 	if (body !== undefined) {
 		opts.headers["Content-Type"] = "application/json";
 		opts.body = JSON.stringify(body);
 	}
-	if (session) opts.headers["session-id"] = session;
 	const resp = await fetch(path, opts);
 	let data = null;
 	const text = await resp.text();
@@ -177,19 +165,13 @@ async function api(method, path, { body, session } = {}) {
 }
 
 async function fetchGameState() {
-	const sid = getSessionId();
-	const opts = sid ? { session: sid } : {};
-	const r = await api("GET", "/api/game/" + gameId, opts);
+	const r = await api("GET", "/api/game/" + gameId);
 	if (r.status === 200) setGameState(r.data);
 }
 
 async function makeMove(a, r, c) {
-	const sid = getSessionId();
-	if (!sid || !_gameState || !_gameState.is_your_turn) return;
-	const resp = await api("POST", "/api/game/" + gameId, {
-		body: { a, r, c },
-		session: sid,
-	});
+	if (!_gameState || !_gameState.is_your_turn) return;
+	const resp = await api("POST", "/api/game/" + gameId, { body: { a, r, c } });
 	if (resp.status === 200) {
 		if (resp.data.failure_reason) return;
 		setGameState(resp.data);
@@ -313,34 +295,28 @@ function renderTurnIndicator() {
 }
 
 async function ensureSession() {
-	let sid = getSessionId();
-	if (sid) {
-		const r = await api("GET", "/api/user", { session: sid });
-		if (r.status === 200) { myUserId = r.data.user_id; myUsername = r.data.username; renderHeader(); return sid; }
-	}
-	const r = await api("POST", "/api/anon_user");
-	if (r.status === 200) {
-		setSessionId(r.data);
-		const u = await api("GET", "/api/user", { session: r.data });
+	const r = await api("GET", "/api/user");
+	if (r.status === 200) { myUserId = r.data.user_id; myUsername = r.data.username; renderHeader(); return true; }
+	const a = await api("POST", "/api/anon_user");
+	if (a.status === 204) {
+		const u = await api("GET", "/api/user");
 		if (u.status === 200) { myUserId = u.data.user_id; myUsername = u.data.username; renderHeader(); }
-		return r.data;
+		return true;
 	}
-	return null;
+	return false;
 }
 
 async function joinThisGame() {
-	const sid = await ensureSession();
-	if (!sid) return;
-	const r = await api("POST", "/api/game/join/" + gameId, { session: sid });
+	if (!await ensureSession()) return;
+	const r = await api("POST", "/api/game/join/" + gameId);
 	if (r.status === 200) {
 		await fetchGameState();
 	}
 }
 
 async function doForfeit() {
-	const sid = getSessionId();
-	if (!sid || !_gameState) return;
-	const r = await api("POST", "/api/game/forfeit/" + gameId, { session: sid });
+	if (!_gameState) return;
+	const r = await api("POST", "/api/game/forfeit/" + gameId);
 	if (r.status === 204) {
 		await fetchGameState();
 	}
@@ -398,9 +374,7 @@ function handleClick(e) {
 }
 
 async function undoMove() {
-	const sid = getSessionId();
-	if (!sid) return;
-	const resp = await api("POST", "/api/game/undo/" + gameId, { session: sid });
+	const resp = await api("POST", "/api/game/undo/" + gameId);
 	if (resp.status === 200) setGameState(resp.data);
 }
 
@@ -411,13 +385,10 @@ window.addEventListener("resize", () => { render(); });
 // -- Init --
 
 async function init() {
-	const sid = getSessionId();
-	if (sid) {
-		const r = await api("GET", "/api/user", { session: sid });
-		if (r.status === 200) {
-			myUserId = r.data.user_id;
-			myUsername = r.data.username;
-		}
+	const r = await api("GET", "/api/user");
+	if (r.status === 200) {
+		myUserId = r.data.user_id;
+		myUsername = r.data.username;
 	}
 	renderHeader();
 	await fetchGameState();

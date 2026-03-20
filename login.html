@@ -50,13 +50,8 @@
 <script>
 const errorEl = document.getElementById("error");
 
-function setSessionId(sid) {
-	if (sid) localStorage.setItem("session_id", sid);
-	else localStorage.removeItem("session_id");
-}
-
 async function api(method, path, { body } = {}) {
-	const opts = { method, headers: {} };
+	const opts = { method, headers: {}, credentials: "same-origin" };
 	if (body !== undefined) {
 		opts.headers["Content-Type"] = "application/json";
 		opts.body = JSON.stringify(body);
@@ -83,8 +78,7 @@ async function doLogin() {
 	const fields = getFields();
 	if (!fields) return;
 	const r = await api("POST", "/api/user/login", { body: fields });
-	if (r.status === 200) {
-		setSessionId(r.data);
+	if (r.status === 204) {
 		window.location.href = "/";
 	} else if (r.status === 404) {
 		errorEl.textContent = "Invalid username or password.";
@@ -98,8 +92,7 @@ async function doCreate() {
 	const fields = getFields();
 	if (!fields) return;
 	const r = await api("POST", "/api/user", { body: fields });
-	if (r.status === 200) {
-		setSessionId(r.data);
+	if (r.status === 204) {
 		window.location.href = "/";
 	} else if (r.status === 409) {
 		errorEl.textContent = "That username is already taken.";
