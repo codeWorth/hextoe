@@ -49,6 +49,8 @@ class GameListEntry(BaseModel):
     game_id: str
     is_complete: bool
     is_started: bool
+    p1_uid: Optional[str]
+    p2_uid: Optional[str]
     p1_uname: Optional[str]
     p2_uname: Optional[str]
     total_moves: int

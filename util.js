@@ -143,7 +143,7 @@ function createGameEntry(game, opts = {}) {
 
 	const p1 = document.createElement("span");
 	p1.className = "p1";
-	p1.textContent = formatUname(game.p1_uname, game.player_id_1, game.is_started);
+	p1.textContent = formatUname(game.p1_uname, game.p1_uid, game.is_started);
 
 	const mid = document.createElement("span");
 	mid.className = "moves";
@@ -151,7 +151,7 @@ function createGameEntry(game, opts = {}) {
 
 	const p2 = document.createElement("span");
 	p2.className = "p2";
-	p2.textContent = formatUname(game.p2_uname, game.player_id_2, game.is_started);
+	p2.textContent = formatUname(game.p2_uname, game.p2_uid, game.is_started);
 
 	const winnerSide = game.winner_index;
 	if (!game.is_complete) {

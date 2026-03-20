@@ -411,10 +411,10 @@ async function runTests() {
 
 	r = await request("POST", "/api/games");
 	assertStatus(r.status, 200, "Get games list");
-	assert(Array.isArray(r.data), "Response is an array");
+	assert(Array.isArray(r.data.games), "Response is an array");
 
 	// Only the public game should appear (both players set and is_public)
-	const publicEntry = r.data.find(g => g.game_id === publicGameId);
+	const publicEntry = r.data.games.find(g => g.game_id === publicGameId);
 	assert(publicEntry !== undefined, "Public game found in games list");
 	assertEq(publicEntry.p1_uname, p1User.username, "Public game p1 username matches");
 	assertEq(publicEntry.p2_uname, null, "Public game p2 username is null (deleted user)");
@@ -422,9 +422,9 @@ async function runTests() {
 	assertEq(publicEntry.is_complete, true, "Public game is complete (forfeited)");
 
 	// Private and anon games should NOT appear
-	const privateEntry = r.data.find(g => g.game_id === privateGameId);
+	const privateEntry = r.data.games.find(g => g.game_id === privateGameId);
 	assertEq(privateEntry, undefined, "Private game not in public games list");
-	const anonEntry = r.data.find(g => g.game_id === anonGameId);
+	const anonEntry = r.data.games.find(g => g.game_id === anonGameId);
 	assertEq(anonEntry, undefined, "Anon game not in public games list");
 
 	// =====================

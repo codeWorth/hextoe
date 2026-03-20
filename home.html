@@ -23,27 +23,7 @@
 		}
 		.canvas-wrap { width: 100%; height: 100%; overflow: hidden; }
 
-		.game-list {
-			width: 300px; min-width: 240px; background: var(--bg-dark); border-radius: 8px;
-			border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
-		}
-		.game-list-header {
-			padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--text-dim);
-			border-bottom: 1px solid var(--border);
-		}
-		.game-list-items { flex: 1; overflow-y: auto; }
-
-		.game-entry {
-			display: flex; align-items: center; padding: 10px 14px;
-			cursor: pointer; border-bottom: 1px solid var(--border-subtle); font-size: 14px;
-		}
-		.game-entry:hover { background: var(--border-subtle); }
-		.game-entry.selected { background: var(--green-bg); }
-		.game-entry .p1 { flex: 1; text-align: left; }
-		.game-entry .moves { flex: 0 0 auto; text-align: center; color: var(--text-dim); font-size: 12px; padding: 0 8px; }
-		.game-entry .p2 { flex: 1; text-align: right; }
-		.game-entry .winner { color: var(--green); }
-		.game-entry .draw { color: var(--text-placeholder); }
+		.game-list { width: 300px; min-width: 240px; }
 	</style>
 </head>
 <body>
@@ -138,15 +118,14 @@ function renderCanvas() {
 
 async function loadGames() {
 	const r = await api("POST", "/api/games");
-	if (r.status === 200 && Array.isArray(r.data)) {
-		_games = r.data;
-		// Default to most recent game if nothing selected
+	if (r.status === 200 && Array.isArray(r.data.games)) {
+		_games = r.data.games;
 		if (!_selectedGameId && _games.length > 0) {
 			_selectedGameId = _games[0].game_id;
 		}
 		renderGameList();
-		await fetchSelectedGameState();
 	}
+	await fetchSelectedGameState();
 }
 
 // -- Resize --
@@ -160,7 +139,7 @@ async function init() {
 	renderHeader();
 	await loadGames();
 	setInterval(async () => {
-		await loadGames();
+		await fetchSelectedGameState();
 	}, 5000);
 }
 init();

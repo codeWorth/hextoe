@@ -61,6 +61,11 @@ def serve_login():
     return FileResponse("login.html")
 
 
+@app.get("/changeinfo")
+def serve_change_info():
+    return FileResponse("change_info.html")
+
+
 @app.get("/user/{user_id}")
 def serve_user_page(user_id: str):
     return FileResponse("user.html")
@@ -246,6 +251,8 @@ def get_user_games(user_id: str):
             "game_id": game.game_id,
             "is_complete": game.is_complete,
             "is_started": game.player_id_1 is not None and game.player_id_2 is not None,
+            "p1_uid": game.player_id_1,
+            "p2_uid": game.player_id_2,
             "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
             "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
             "winner_index": winner_index(game.player_id_1, game.player_id_2, game.winner_id),
@@ -259,8 +266,9 @@ def get_user_games(user_id: str):
 def login(body: UserInfoBody, response: Response):
     with Session(engine) as db:
         user = db.exec(select(User).where(User.username == body.username)).first()
-        if user is None or not verify_password(body.password, user.password_hash):
+        if (user is None or user.is_deleted or not verify_password(body.password, user.password_hash)):
             raise HTTPException(status_code=404)
+
         user.session_id = new_id_str()
         user.session_ttl = new_session_ttl()
         db.add(user)
@@ -483,8 +491,8 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
 # Get a list of recent active games.
 # Returns up to 25 games where the game has at least started (both player ids are
 # present), and the game is public
-@app.post("/api/games")
-def get_games(response_model=GameListResponse):
+@app.post("/api/games", response_model=GameListResponse)
+def get_games():
     with Session(engine) as db:
         Player1 = aliased(User)
         Player2 = aliased(User)
@@ -515,15 +523,17 @@ def get_games(response_model=GameListResponse):
             .limit(25)
         ).all()
 
-        return [{
+        return {"games": [{
             "game_id": game.game_id,
             "is_complete": game.is_complete,
             "is_started": game.player_id_1 is not None and game.player_id_2 is not None,
+            "p1_uid": game.player_id_1,
+            "p2_uid": game.player_id_2,
             "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
             "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
             "total_moves": game.total_moves,
             "winner_index": winner_index(game.player_id_1, game.player_id_2, game.winner_id)
-        } for game in games]
+        } for game in games]}
 
 
 # Forfeit a game
