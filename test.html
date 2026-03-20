@@ -69,6 +69,10 @@ async function request(method, path, { body, session } = {}) {
 	return { status: resp.status, data };
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Generate unique usernames to avoid conflicts across test runs
 const suffix = Date.now().toString(36);
 const USER1 = "testuser1_" + suffix;
@@ -136,6 +140,7 @@ async function runTests() {
 	assertStatus(r.status, 204, "Logout");
 
 	// Session should be expired now
+    await sleep(500);
 	r = await request("POST", "/user/logout", { session: session1 });
 	assertStatus(r.status, 403, "Expired session");
 
@@ -175,27 +180,16 @@ async function runTests() {
 	assert(initialState.winner_id === null, "winner_id is null");
 	assertEq(initialState.moves, [], "No moves yet");
 
-	userId1 = null;
-	userId2 = null;
-
-	// Figure out which user is which player by checking current_player_id.
-	// current_player_id is player 1 at the start. Try making a move with session1;
-	// if it works, session1 is player 1.
 	const p1Id = initialState.player_id_1;
 	const p2Id = initialState.player_id_2;
-	const currentPlayerId = initialState.current_player_id;
 	info("player_id_1: " + p1Id.slice(0, 16) + "...");
 	info("player_id_2: " + p2Id.slice(0, 16) + "...");
-	info("current_player (p1): " + currentPlayerId.slice(0, 16) + "...");
 
-	// Determine which session belongs to which player by trying a move
-	// We'll use a throwaway coordinate that we'll undo or just proceed with
+	// Determine which session belongs to which player using GET /user
+	r = await request("GET", "/user", { session: session1 });
+	const user1Id = r.data.user_id;
 	let sessionP1, sessionP2;
-	r = await request("POST", "/game/" + publicGameId, {
-		body: { a: 0, r: 0, c: 0 },
-		session: session1,
-	});
-	if (r.status === 200 && !r.data.failure_reason) {
+	if (user1Id === p1Id) {
 		info("session1 is player 1");
 		sessionP1 = session1;
 		sessionP2 = session2;
@@ -203,12 +197,13 @@ async function runTests() {
 		info("session1 is player 2");
 		sessionP1 = session2;
 		sessionP2 = session1;
-		// Make the move with the correct session
-		r = await request("POST", "/game/" + publicGameId, {
-			body: { a: 0, r: 0, c: 0 },
-			session: sessionP1,
-		});
 	}
+
+	// Make the first move
+	r = await request("POST", "/game/" + publicGameId, {
+		body: { a: 0, r: 0, c: 0 },
+		session: sessionP1,
+	});
 
 	// =====================
 	// MAKING MOVES
@@ -325,15 +320,122 @@ async function runTests() {
 	info("user1 has " + r.data.games.length + " game(s), " + r.data.current_game_ids.length + " in-progress");
 
 	// =====================
-	// CLEANUP - Delete users
+	// GET /user (current user)
+	// =====================
+	section("GET /user - Get current user");
+
+	r = await request("GET", "/user", { session: session1 });
+	assertStatus(r.status, 200, "Get current user");
+	assertEq(r.data.username, NEW_USER1, "Current user username matches");
+	assert(Array.isArray(r.data.games), "Current user has games array");
+	assert(Array.isArray(r.data.current_game_ids), "Current user has current_game_ids array");
+
+	// =====================
+	// DELETED USERS
+	// =====================
+	section("DELETE /user - Deleted user behavior");
+
+	// Delete user2 and verify behavior
+	r = await request("DELETE", "/user", { session: sessionP2 });
+	assertStatus(r.status, 204, "Delete user2");
+
+	// Deleted user should return 404 on get
+	r = await request("GET", "/user/" + p2Id);
+	assertStatus(r.status, 404, "Get deleted user returns 404");
+
+	// Deleted user's session should be expired (403)
+	r = await request("POST", "/user/logout", { session: sessionP2 });
+	assertStatus(r.status, 403, "Deleted user session is expired");
+
+	// User1's game list should show null opponent_username for the deleted user
+	r = await request("GET", "/user/" + p1Id);
+	assertStatus(r.status, 200, "Get user1 profile after user2 deleted");
+	const gameWithDeletedOpponent = r.data.games.find(g => g.game_id === publicGameId);
+	assert(gameWithDeletedOpponent !== undefined, "Public game found in user1's games");
+	assertEq(gameWithDeletedOpponent.opponent_username, null, "Deleted opponent username is null");
+
+	// =====================
+	// ANONYMOUS USERS
+	// =====================
+	section("POST /anon_user - Anonymous users");
+
+	r = await request("POST", "/anon_user");
+	assertStatus(r.status, 200, "Create anon user");
+	const anonSession = r.data;
+	assert(typeof anonSession === "string" && anonSession.length > 0, "Returns anon session id");
+	info("anon session: " + anonSession.slice(0, 16) + "...");
+
+	// Anon user can get their own info via GET /user
+	r = await request("GET", "/user", { session: anonSession });
+	assertStatus(r.status, 200, "Get current anon user");
+	assertEq(r.data.username, "Anonymous", "Anon user username is Anonymous");
+
+	// Update should no-op for anon user (returns same session)
+	r = await request("PUT", "/user", { body: { username: "hacker", password: null }, session: anonSession });
+	assertStatus(r.status, 200, "Update anon user returns 200");
+	assertEq(r.data, anonSession, "Anon update returns same session id (no-op)");
+
+	// Anon user can still get their info (username unchanged)
+	r = await request("GET", "/user", { session: anonSession });
+	assertEq(r.data.username, "Anonymous", "Anon username still Anonymous after update attempt");
+
+	// Delete should no-op for anon user
+	r = await request("DELETE", "/user", { session: anonSession });
+	assertStatus(r.status, 204, "Delete anon user returns 204");
+
+	// Anon user should still be usable after delete no-op
+	r = await request("GET", "/user", { session: anonSession });
+	assertStatus(r.status, 200, "Anon user still accessible after delete no-op");
+
+	// Anon user can join a game
+	r = await request("POST", "/game/join", { session: anonSession });
+	assertStatus(r.status, 200, "Anon user can join game");
+	const anonGameId = r.data;
+
+	// =====================
+	// FORFEIT GAMES
+	// =====================
+	section("POST /game/forfeit - Forfeit games");
+
+	// Forfeit the public game (both players present, user1 forfeits so user2 wins)
+	// user2 is deleted but still has a user_id in the game; winner should be p2Id
+	r = await request("POST", "/game/forfeit/" + publicGameId, { session: sessionP1 });
+	assertStatus(r.status, 204, "Forfeit public game");
+
+	r = await request("GET", "/game/" + publicGameId);
+	assertStatus(r.status, 200, "Get public game after forfeit");
+	assertEq(r.data.winner_id, p2Id, "Public game winner is other player (p2)");
+	assertEq(r.data.is_your_turn, false, "Public game is_your_turn is false (complete)");
+
+	// Forfeit the private game (only one player, no opponent yet)
+	r = await request("POST", "/game/forfeit/" + privateGameId, { session: sessionP1 });
+	assertStatus(r.status, 204, "Forfeit private game (no opponent)");
+
+	r = await request("GET", "/game/" + privateGameId);
+	assertStatus(r.status, 200, "Get private game after forfeit");
+	assertEq(r.data.winner_id, null, "Private game winner is null (no opponent)");
+	assertEq(r.data.is_your_turn, false, "Private game is_your_turn is false (complete)");
+
+	// Forfeit the anon game (only one player, no opponent yet)
+	r = await request("POST", "/game/forfeit/" + anonGameId, { session: anonSession });
+	assertStatus(r.status, 204, "Forfeit anon game (no opponent)");
+
+	r = await request("GET", "/game/" + anonGameId);
+	assertStatus(r.status, 200, "Get anon game after forfeit");
+	assertEq(r.data.winner_id, null, "Anon game winner is null (no opponent)");
+	assertEq(r.data.is_your_turn, false, "Anon game is_your_turn is false (complete)");
+
+	// Forfeiting an already-complete game should 404
+	r = await request("POST", "/game/forfeit/" + publicGameId, { session: sessionP1 });
+	assertStatus(r.status, 404, "Forfeit already-complete game returns 404");
+
+	// =====================
+	// CLEANUP - Delete remaining users
 	// =====================
 	section("DELETE /user - Cleanup");
 
 	r = await request("DELETE", "/user", { session: sessionP1 });
 	assertStatus(r.status, 204, "Delete user1");
-
-	r = await request("DELETE", "/user", { session: sessionP2 });
-	assertStatus(r.status, 204, "Delete user2");
 
 	log("\n--- Tests complete ---", "info");
 }

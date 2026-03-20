@@ -12,6 +12,7 @@ class User(SQLModel, table=True):
     session_id: str = Field(index=True)
     session_ttl: datetime
     is_deleted: bool = Field(default=False)
+    is_anon: bool = Field(default=False)
 
 
 # is_complete with empty winner ID indicates the game ended in a draw.

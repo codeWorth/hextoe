@@ -38,10 +38,16 @@ def require_valid_session(session_id: str, db: Session) -> User:
     return user
 
 
-def get_uname_safe(uname: str, is_deleted: bool) -> str:
+def get_uname_safe(uname: str, is_deleted: bool, is_anon: bool) -> str:
     if is_deleted:
         return None
+    if is_anon:
+        return "Anonymous"
     return uname
+
+
+def get_uuname_safe(user: User) -> str:
+    return get_uname_safe(user.username, user.is_deleted, user.is_anon)
 
 
 def other_value(a, b, v):
@@ -155,17 +161,17 @@ def get_current_player_id(game: Game, num_moves: int) -> Optional[str]:
         return game.player_id_2
 
 
-# Construct the game state dict for sending to the client
-def build_game_state(game: Game, moves: list[Move]) -> dict:
-    if game.is_complete:
-        current_player = None
-    else:
-        current_player = get_current_player_id(game, len(moves))
+# Construct the game state dict for sending to the client.
+# Pass None for asker_id if it's not a logged in request
+def build_game_state(game: Game, moves: list[Move], asker_id: str) -> dict:
+    is_your_turn = False
+    if not game.is_complete and asker_id is not None:
+        is_your_turn = asker_id == get_current_player_id(game, len(moves))
     return {
         "player_id_1": game.player_id_1,
         "player_id_2": game.player_id_2,
         "winner_id": game.winner_id,
-        "current_player_id": current_player,
+        "is_your_turn": is_your_turn,
         "moves": [{"a": int(m.a), "r": m.r, "c": m.c} for m in moves],
     }
 

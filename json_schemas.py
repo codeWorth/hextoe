@@ -34,7 +34,7 @@ class GameStateResponse(BaseModel):
     player_id_1: Optional[str]
     player_id_2: Optional[str]
     winner_id: Optional[str]
-    current_player_id: Optional[str]
+    is_your_turn: bool
     moves: list[MoveResponse]
 
 
@@ -52,5 +52,12 @@ class GameSummary(BaseModel):
 
 class UserProfileResponse(BaseModel):
     username: str
+    games: list[GameSummary]
+    current_game_ids: list[str]
+
+
+class MyUserProfileResponse(BaseModel):
+    username: str
+    user_id: str
     games: list[GameSummary]
     current_game_ids: list[str]
