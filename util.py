@@ -41,23 +41,107 @@ def other_value(a, b, v):
 
     raise HTTPException(status_code=500)
 
+# Check if there is a connected line of 6 down and to the right.
+#   <0, r, c> -> <1, r, c> moves us down and to the right
+#   <1, r, c> -> <0, r+1, c+1> moves us down and to the right
+#
+#   <a, r, c> -> <a, r, c+1> moves us to the right
+#
+#   <0, r, c> -> <1, r, c-1> moves us down and to the left
+#   <1, r, c> -> <0, r-1, c> moves us down and to the left
+def is_line_dr(moves_tbl, pos) -> bool:
+    ca, cr, cc = pos
+    count = 1
+    is_p1 = moves_tbl.get(pos)
+    if is_p1 is None:
+        return False
+
+    while count < 6:
+        cr += (ca & 1)
+        cc += (ca & 1)
+        ca = 1 - ca
+        cv = moves_tbl.get((ca, cr, cc))
+        if cv is None or cv != is_p1:
+            return False
+
+        count += 1
+
+    return True
+
+# Check if there is a connected line of 6 to the right.
+#   <a, r, c> -> <a, r, c+1> moves us to the right
+def is_line_r(moves_tbl, pos) -> bool:
+    ca, cr, cc = pos
+    count = 1
+    is_p1 = moves_tbl.get(pos)
+    if is_p1 is None:
+        return False
+
+    while count < 6:
+        cr += 1
+        cv = moves_tbl.get((ca, cr, cc))
+        if cv is None or cv != is_p1:
+            return False
+
+        count += 1
+
+    return True
+
+# Check if there is a connected line of 6 down and to the left.
+#   <0, r, c> -> <1, r, c-1> moves us down and to the left
+#   <1, r, c> -> <0, r-1, c> moves us down and to the left
+def is_line_dl(moves_tbl, pos) -> bool:
+    ca, cr, cc = pos
+    count = 1
+    is_p1 = moves_tbl.get(pos)
+    if is_p1 is None:
+        return False
+
+    while count < 6:
+        cr -= (ca & 1)
+        ca = 1 - ca
+        cc -= (ca & 1)
+        cv = moves_tbl.get((ca, cr, cc))
+        if cv is None or cv != is_p1:
+            return False
+
+        count += 1
+
+    return True
 
 # Return 0 if no one has won yet, 1 if player 1 got 6 in a row, or 2 if player
-# 2 got 6 in a row. If both players have somehow gotten 6 in a row, we just
-# return 1, since we check that player first.
+# 2 got 6 in a row. If both players have somehow gotten 6 in a row, the result
+# is nondeterministic
 def check_winner(moves: list[Move]) -> int:
+    mvt = {(int(m.a), m.r, m.c): is_player_one(m.move_index) for m in moves}
+    for pos in mvt.keys():
+        if (is_line_r(mvt, pos) or is_line_dr(mvt, pos) or is_line_dl(mvt, pos)):
+            if mvt.get(pos):
+                return 1
+            else:
+                return 2
+
     return 0
+
+
+# Return if this number of moves indicates player one should take a turn. If false,
+# player two should take a turn
+def is_player_one(num_moves: int) -> bool:
+    if num_moves == 0:
+        return True
+    if ((num_moves - 1) // 2) % 2 == 0:
+        return False
+    return True
 
 
 # Return the user_id of the player whose turn it is
 def get_current_player_id(game: Game, num_moves: int) -> Optional[str]:
     if game.player_id_1 is None or game.player_id_2 is None:
         return None
-    if num_moves == 0:
+    if is_player_one(num_moves):
         return game.player_id_1
-    if ((num_moves - 1) // 2) % 2 == 0:
+    else:
         return game.player_id_2
-    return game.player_id_1
 
 
 # Construct the game state dict for sending to the client
