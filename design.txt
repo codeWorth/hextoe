@@ -10,12 +10,14 @@ User
  - current session id (random string, also indexed on this)
  - session ttl
  - is_deleted (default false)
+ - is_anon (default false)
 
 Game
  - game id (random string, key)
  - player id 1 (user id, can be NULL, indicates waiting)
  - player id 2 (can be NULL, indicates waiting)
- - winner id (default NULL, NULL indicates in progress)
+ - winner id (default NULL)
+ - is_complete (default false)
  - creation time
  - public game (bool)
 
@@ -38,6 +40,14 @@ POST /user, accepts json, returns text
     If a user exists with that username, return 409
     TODO: users might create way too many accounts
 
+POST /anon_user, accepts nothing, returns text
+    Creates an anonymous user with a random username and no password. Returns 200 with session id.
+    Anonymous users cannot update their username/password or be deleted.
+
+GET /user, accepts nothing, returns json
+    Header contains session id (required)
+    Returns the current user's profile (same as GET /user/<user id>) plus user_id field
+
 PUT /user, accepts json body, returns text
     Header contains session id
     Body contains json:
@@ -52,7 +62,8 @@ DELETE /user, accepts nothing returns nothing
     Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
-    If session id matches a user, marked that user deleted, return 204
+    If session id matches a user, mark as deleted, return 204
+    If user is anonymous, no-op, return 204
 
 GET /user/<user id>, accepts nothing, returns json
     Return json with 200:
@@ -93,15 +104,13 @@ POST /game/private takes nothing, returns text
     Creates a new non public game, returns 200 and the game id
 
 GET /game/<game_id> takes nothing, returns json
-    Header contains session id
-    If session id doesn't match any user, return 403
-    If TTL of session id is past current time, return 403
+    Header contains session id (optional)
     If the game id doesn't exist, returns 404
     Responds with 200 and response body:
         - player 1 id
         - player 2 id
-        - Winner id (can be null if in progress)
-        - id of played who's turn it is
+        - Winner id (can be null)
+        - is_your_turn (true iff the requesting player should take a turn)
         - list of moves:
              - A (int, 0 or 1)
              - R (int)
@@ -128,10 +137,16 @@ POST /game/undo/<game id> takes nothing, returns json
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
     If the game id doesn't exist, returns 404
-    If the game winner is not null, returns 400
+    If the game is complete, returns 400
     If the player cannot undo the most recent move, returns 400
     If the player can undo the most recent move, returns 200 and response body:
         - same response body as GET /game/<game id>
+
+POST /game/forfeit/<game id> takes nothing, returns nothing
+    Header contains session id
+    If the user is not a player in this game or the game is already complete, returns 404
+    If both players are present, sets winner to the other player and marks game complete, returns 204
+    If only one player is present, marks game complete with no winner, returns 204
 
 
 Some additional game mechanics:
