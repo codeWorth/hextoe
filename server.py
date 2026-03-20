@@ -1,200 +1,45 @@
 import random
-import secrets
-from datetime import datetime, timedelta
-from typing import Optional, Union
+from datetime import datetime
+from typing import Union
 
-from fastapi import FastAPI, Header, HTTPException, Response
-from passlib.context import CryptContext
-from pydantic import BaseModel
+from fastapi import FastAPI, Header, HTTPException
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
-from sqlmodel import Field, Session, SQLModel, create_engine, select
+from sqlmodel import Session, SQLModel, create_engine, select
+
+from db_schemas import Game, Move, User
+from json_schemas import (
+    GameStateResponse,
+    GameSummary,
+    MoveBody,
+    MoveFailureResponse,
+    UpdateUserBody,
+    UserInfoBody,
+    UserProfileResponse,
+)
+from util import (
+    build_game_state,
+    check_winner,
+    get_current_player_id,
+    new_id_str,
+    new_session_ttl,
+    pwd_context,
+    require_valid_session,
+    validate_move,
+)
 
 
 # -- DB setup --
 
-DATABASE_URL = "mysql+pymysql://user:password@localhost/hextoe"
+DATABASE_URL = "mysql+pymysql://hextoe@localhost/hextoe"
 engine = create_engine(DATABASE_URL)
 
 app = FastAPI()
 
-SESSION_TTL_HOURS = 48
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
-MOVE_TOO_FAR = "TOO_FAR"
-MAX_MOVE_DIST = 7
 
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
-
-
-# -- Table definitions --
-
-# User always has some session_id, but the TTL may indicate it has expired.
-class User(SQLModel, table=True):
-    user_id: str = Field(primary_key=True)
-    username: str = Field(unique=True)
-    password_hash: str
-    session_id: str = Field(index=True)
-    session_ttl: datetime
-
-
-# is_complete with empty winner ID indicates the game ended in a draw.
-# If one of the player_id slots is empty, and the is_public field is true,
-# then this game is waiting for the 2nd player to join.
-class Game(SQLModel, table=True):
-    game_id: str = Field(primary_key=True)
-    player_id_1: Optional[str] = Field(default=None, foreign_key="user.user_id")
-    player_id_2: Optional[str] = Field(default=None, foreign_key="user.user_id")
-    winner_id: Optional[str] = Field(default=None, foreign_key="user.user_id")
-    is_complete: bool = Field(default=False)
-    creation_time: datetime = Field(default_factory=datetime.utcnow)
-    is_public: bool = Field(default=True)
-
-
-class Move(SQLModel, table=True):
-    game_id: str = Field(foreign_key="game.game_id", primary_key=True)
-    move_index: int = Field(primary_key=True)
-    a: bool  # row parity (0 or 1)
-    r: int   # row
-    c: int   # column
-
-
-# -- Helper functions --
-
-def new_id_str() -> str:
-    return secrets.token_urlsafe(32)
-
-
-def new_session_ttl() -> datetime:
-    return datetime.utcnow() + timedelta(hours=SESSION_TTL_HOURS)
-
-
-# Return the User for the given session_id, or raise 403 if the ID is invalid
-# (could be not present or expired)
-def require_valid_session(session_id: str, db: Session) -> User:
-    user = db.exec(select(User).where(User.session_id == session_id)).first()
-    if user is None or user.session_ttl <= datetime.utcnow():
-        raise HTTPException(status_code=403)
-    return user
-
-
-def other_value(a, b, v):
-    if v == a:
-        return b
-    if v == b:
-        return a
-
-    raise HTTPException(status_code=500)
-
-
-# Return 0 if no one has won yet, 1 if player 1 got 6 in a row, or 2 if player
-# 2 got 6 in a row. If both players have somehow gotten 6 in a row, we just
-# return 1, since we check that player first.
-def check_winner(moves: list[Move]) -> int:
-    return 0
-
-
-# Return the user_id of the player whose turn it is
-def get_current_player_id(game: Game, num_moves: int) -> Optional[str]:
-    if game.player_id_1 is None or game.player_id_2 is None:
-        return None
-    if num_moves == 0:
-        return game.player_id_1
-    if ((num_moves - 1) // 2) % 2 == 0:
-        return game.player_id_2
-    return game.player_id_1
-
-
-# Construct the game state dict for sending to the client
-def build_game_state(game: Game, moves: list[Move]) -> dict:
-    if game.is_complete:
-        current_player = None
-    else:
-        current_player = get_current_player_id(game, len(moves))
-    return {
-        "player_id_1": game.player_id_1,
-        "player_id_2": game.player_id_2,
-        "winner_id": game.winner_id,
-        "current_player_id": current_player,
-        "moves": [{"a": int(m.a), "r": m.r, "c": m.c} for m in moves],
-    }
-
-
-# Return a failure reason string, or None if the move is valid
-def validate_move(a: int, r: int, c: int, existing_moves: list[Move]) -> Optional[str]:
-    # We can't overwrite an existing X or O
-    for m in existing_moves:
-        if int(m.a) == a and m.r == r and m.c == c:
-            return MOVE_ALREADY_TAKEN
-
-    # We can't place an X or O too far away from the other Xs and Os
-    if len(existing_moves) > 0:
-        close_enough = False
-        for m in existing_moves:
-            dA = 0 if int(m.a) == a else 1
-            dR = abs(r - m.r)
-            dC = abs(c - m.c)
-            if dA + dR * 2 + dC <= MAX_MOVE_DIST:
-                close_enough = True
-                break
-        if not close_enough:
-            return MOVE_TOO_FAR
-
-    return None
-
-
-# -- JSON request schemas --
-
-class UserInfoBody(BaseModel):
-    username: str
-    password: str
-
-
-class UpdateUserBody(BaseModel):
-    username: Optional[str] = None
-    password: Optional[str] = None
-
-
-class MoveBody(BaseModel):
-    a: int
-    r: int
-    c: int
-
-
-# -- JSON response schemas --
-
-class MoveResponse(BaseModel):
-    a: int
-    r: int
-    c: int
-
-
-class GameStateResponse(BaseModel):
-    player_id_1: Optional[str]
-    player_id_2: Optional[str]
-    winner_id: Optional[str]
-    current_player_id: Optional[str]
-    moves: list[MoveResponse]
-
-
-class MoveFailureResponse(BaseModel):
-    failure_reason: str
-
-
-class GameSummary(BaseModel):
-    game_id: str
-    opponent_username: Optional[str]
-    creation_time: datetime
-    total_moves: int
-    winner_username: Optional[str]
-
-
-class UserProfileResponse(BaseModel):
-    username: str
-    games: list[GameSummary]
-    current_game_ids: list[str]
 
 
 # -- HTTP Endpoints --
