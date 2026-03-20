@@ -73,8 +73,13 @@ def serve_hex_js():
 
 
 @app.get("/src/util.js")
-def serve_hex_js():
+def serve_util_js():
     return FileResponse("util.js")
+
+
+@app.get("/src/hextoe.css")
+def serve_hextoe_css():
+    return FileResponse("hextoe.css")
 
 
 @app.get("/test")

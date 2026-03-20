@@ -5,6 +5,8 @@ There are 3 pages.
 Homepage: "/"
 Login page: "/login"
 Game page: "/game/<game id>"
+User info page: "/user/<user id>"
+Change login info page: "/changeinfo"
 
 Homepage (home.html):
 
@@ -59,3 +61,33 @@ Game page functionality:
     - A "Join Game" button if there is only 1 player ID in this game AND it's not the current user. This should trigger the join_specific_game endpoint. Otherwise...
 	- Text saying "Waiting for opponent..." if there is only 1 player id in this game. Otherwise...
 	- Text saying "Your Turn" if is_your_turn is true, "Opponent's Turn" if is_your_turn is false
+
+
+User info page (user.html):
+
+The user info page has:
+ - The user's username
+ - A list of games they've played
+ - If the user is looking at their own page, they will have a button to change their login info.
+	This button should send them to "/changeinfo"
+ - The list of games they've played will look the same as the game list from the homepage.
+ - Like the homepage, the user can click on a game in the list.
+ - Unlike the homepage, there will not be a canvas showing the currently selected game
+
+
+Change info page (change_info.html):
+
+The change info page has:
+ - A text box (Username) auto filled with the user's current username
+ - A password box (Password) which is empty to start
+ - A text box (New Username) auto filled with the user's current username
+ - A password box (New Password) which is empty to start
+ - Info text below: "Leave the New Password box blank to keep your current password"
+ - "Submit" button
+
+This page should redirect to the login path if the user does not have a session token, aka their user info returns null.
+When the user clicks submit, give an error if either username box is empty, or if the password box is empty
+Otherwise, when they click submit, first call login with the Username and Password. If this fails, give the user an error (Incorrect login info)
+Otherwise, populate a dict with the new username, and the new password if it is not empty.
+Submit this dict to the update_user endpoint.
+If successful, clear the text boxes and show a green message saying "Updated your login info"

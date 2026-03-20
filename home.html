@@ -2,28 +2,10 @@
 <html>
 <head>
 	<title>HexToe</title>
+	<link rel="stylesheet" href="/src/hextoe.css">
 	<style>
-		* { margin: 0; padding: 0; box-sizing: border-box; }
 		html, body { height: 100%; }
-		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2b2b2b; color: #d4d4d4; display: flex; flex-direction: column; }
-
-		.header {
-			display: flex; justify-content: space-between; align-items: center;
-			padding: 16px 32px; background: #232323; border-bottom: 2px solid #3a3a3a;
-		}
-		.header h1 { font-size: 28px; color: #5e8c61; letter-spacing: 2px; }
-		.header-right { display: flex; align-items: center; gap: 16px; }
-		.header-right .username { color: #aaa; font-size: 16px; }
-
-		button {
-			padding: 10px 24px; border: none; border-radius: 6px; cursor: pointer;
-			font-size: 16px; font-weight: 600; transition: background 0.2s;
-		}
-		.btn-primary { background: #4a7c4f; color: #eee; }
-		.btn-primary:hover { background: #5e8c61; }
-		.btn-secondary { background: #3a3a3a; color: #d4d4d4; }
-		.btn-secondary:hover { background: #4a4a4a; }
-		.btn-small { padding: 6px 16px; font-size: 14px; }
+		body { display: flex; flex-direction: column; }
 
 		.button-row {
 			display: flex; justify-content: center; gap: 16px;
@@ -40,36 +22,28 @@
 			position: relative; aspect-ratio: 4 / 3; height: 100%; max-width: calc(100% - 316px);
 		}
 		.canvas-wrap { width: 100%; height: 100%; overflow: hidden; }
-		canvas { background: #252525; border-radius: 8px; }
-		.recenter-btn {
-			position: absolute; bottom: 12px; right: 12px;
-			width: 36px; height: 36px; border: none; border-radius: 6px;
-			background: rgba(58, 58, 58, 0.8); color: #999; font-size: 20px;
-			cursor: pointer; display: flex; align-items: center; justify-content: center;
-		}
-		.recenter-btn:hover { background: rgba(74, 74, 74, 1); color: #d4d4d4; }
 
 		.game-list {
-			width: 300px; min-width: 240px; background: #232323; border-radius: 8px;
-			border: 1px solid #3a3a3a; display: flex; flex-direction: column; overflow: hidden;
+			width: 300px; min-width: 240px; background: var(--bg-dark); border-radius: 8px;
+			border: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
 		}
 		.game-list-header {
-			padding: 10px 14px; font-size: 14px; font-weight: 600; color: #888;
-			border-bottom: 1px solid #3a3a3a;
+			padding: 10px 14px; font-size: 14px; font-weight: 600; color: var(--text-dim);
+			border-bottom: 1px solid var(--border);
 		}
 		.game-list-items { flex: 1; overflow-y: auto; }
 
 		.game-entry {
 			display: flex; align-items: center; padding: 10px 14px;
-			cursor: pointer; border-bottom: 1px solid #2e2e2e; font-size: 14px;
+			cursor: pointer; border-bottom: 1px solid var(--border-subtle); font-size: 14px;
 		}
-		.game-entry:hover { background: #2e2e2e; }
-		.game-entry.selected { background: #2a3a2a; }
+		.game-entry:hover { background: var(--border-subtle); }
+		.game-entry.selected { background: var(--green-bg); }
 		.game-entry .p1 { flex: 1; text-align: left; }
-		.game-entry .moves { flex: 0 0 auto; text-align: center; color: #888; font-size: 12px; padding: 0 8px; }
+		.game-entry .moves { flex: 0 0 auto; text-align: center; color: var(--text-dim); font-size: 12px; padding: 0 8px; }
 		.game-entry .p2 { flex: 1; text-align: right; }
-		.game-entry .winner { color: #5e8c61; }
-		.game-entry .draw { color: #666; }
+		.game-entry .winner { color: var(--green); }
+		.game-entry .draw { color: var(--text-placeholder); }
 	</style>
 </head>
 <body>
