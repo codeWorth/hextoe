@@ -5,6 +5,8 @@ from typing import Optional
 import bcrypt
 from fastapi import HTTPException
 from sqlmodel import Session, select
+from sqlalchemy import func
+from sqlalchemy.orm import aliased
 
 from db_schemas import Game, Move, User
 
@@ -163,16 +165,15 @@ def get_current_player_id(game: Game, num_moves: int) -> Optional[str]:
 
 # Construct the game state dict for sending to the client.
 # Pass None for asker_id if it's not a logged in request
-def build_game_state(game: Game, moves: list[Move], asker_id: str,
-                     p1_name: str = None, p2_name: str = None) -> dict:
+def build_game_state(game: Game, moves: list[Move], asker_id: str) -> dict:
     is_your_turn = False
     if not game.is_complete and asker_id is not None:
         is_your_turn = asker_id == get_current_player_id(game, len(moves))
     return {
         "player_id_1": game.player_id_1,
         "player_id_2": game.player_id_2,
-        "p1_username": p1_name,
-        "p2_username": p2_name,
+        "p1_uname": get_uname_safe(game.p1_uname, game.p1_deleted, game.p1_anon),
+        "p2_uname": get_uname_safe(game.p2_uname, game.p2_deleted, game.p2_anon),
         "winner_id": game.winner_id,
         "is_your_turn": is_your_turn,
         "moves": [{
@@ -215,3 +216,30 @@ def winner_index(pid1, pid2, winner_id):
         return 2
 
     return 0
+
+
+# Get game with usernames
+def get_game_with_unames(game_id, db):
+    Player1 = aliased(User)
+    Player2 = aliased(User)
+    return db.exec(
+        select(
+            Game.game_id,
+            Game.player_id_1,
+            Game.player_id_2,
+            Game.winner_id,
+            Game.is_complete,
+            Game.creation_time,
+            Game.move_time,
+            Game.is_public,
+            func.any_value(Player1.username).label("p1_uname"),
+            func.any_value(Player1.is_deleted).label("p1_deleted"),
+            func.any_value(Player1.is_anon).label("p1_anon"),
+            func.any_value(Player2.username).label("p2_uname"),
+            func.any_value(Player2.is_deleted).label("p2_deleted"),
+            func.any_value(Player2.is_anon).label("p2_anon"),
+        )
+        .where(Game.game_id == game_id)
+        .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
+        .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
+    ).first()

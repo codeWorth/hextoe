@@ -4,7 +4,7 @@
 	<title>HexToe - Game</title>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
-		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2b2b2b; color: #d4d4d4; min-height: 100vh; display: flex; flex-direction: column; }
+		body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #2b2b2b; color: #d4d4d4; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
 		.header {
 			display: flex; justify-content: space-between; align-items: center;
@@ -42,7 +42,7 @@
 
 		.sidebar {
 			width: 280px; background: #232323; border-left: 2px solid #3a3a3a;
-			display: flex; flex-direction: column; padding: 16px; min-height: 0;
+			display: flex; flex-direction: column; padding: 16px; min-height: 0; overflow: hidden;
 		}
 		.turn-indicator {
 			padding: 12px; text-align: center; font-size: 16px; font-weight: 600;
@@ -64,8 +64,9 @@
 			flex: 1; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 2px;
 		}
 		.move-item {
-			padding: 6px 10px; border-radius: 4px; font-size: 13px; font-family: monospace;
+			padding: 6px 10px; border-radius: 4px; font-size: 13px; font-family: monospace; cursor: default;
 		}
+		.move-item:hover { filter: brightness(1.3); outline: 1px solid rgba(255,255,255,0.15); }
 		.move-p1 { background: #3a2a2a; color: #cc9999; }
 		.move-p2 { background: #2a2a3a; color: #9999cc; }
 	</style>
@@ -199,7 +200,11 @@ async function makeMove(a, r, c) {
 
 function render() {
 	const moves = _gameState ? _gameState.moves : null;
-	renderHexGrid(canvas, ctx, camX, camY, moves);
+    let submoves = moves;
+    if (maxMoveId >= 0) {
+        submoves = moves.slice(0, maxMoveId + 1);
+    }
+	renderHexGrid(canvas, ctx, camX, camY, submoves);
 }
 
 function renderPlayerInfo() {
@@ -207,8 +212,15 @@ function renderPlayerInfo() {
 	el.innerHTML = "";
 	if (!_gameState) return;
 
-	let p1Name = _gameState.p1_username || "???";
-	let p2Name = _gameState.p2_username || "???";
+	let p1Name = _gameState.p1_uname;
+	let p2Name = _gameState.p2_uname;
+    if (!_gameState.player_id_1 || !_gameState.player_id_2) {
+        p1Name = p1Name || "...";
+        p2Name = p2Name || "...";
+    } else {
+        p1Name = p1Name || "[Deleted]";
+        p2Name = p2Name || "[Deleted]";    
+    }
 
 	// If both are Anonymous and we're in the game, label ourselves "You"
 	const isP1 = myUserId && myUserId === _gameState.player_id_1;
@@ -218,7 +230,10 @@ function renderPlayerInfo() {
 		else if (isP2) p2Name = "You";
 	}
 
-	function makeRow(symbol, symbolClass, name) {
+	const p1Won = _gameState.winner_id && _gameState.winner_id === _gameState.player_id_1;
+	const p2Won = _gameState.winner_id && _gameState.winner_id === _gameState.player_id_2;
+
+	function makeRow(symbol, symbolClass, name, isWinner) {
 		const row = document.createElement("div");
 		row.className = "player-row";
 		const sym = document.createElement("span");
@@ -227,13 +242,17 @@ function renderPlayerInfo() {
 		const nm = document.createElement("span");
 		nm.className = "player-name";
 		nm.textContent = name;
+		if (isWinner) {
+            nm.style.color = "#5e8c61";
+            nm.textContent += " (Winner!)";
+        }
 		row.appendChild(sym);
 		row.appendChild(nm);
 		return row;
 	}
 
-	el.appendChild(makeRow("X", "x", p1Name));
-	el.appendChild(makeRow("O", "o", p2Name));
+	el.appendChild(makeRow("X", "x", p1Name, p1Won));
+	el.appendChild(makeRow("O", "o", p2Name, p2Won));
 }
 
 function renderMoveList() {
@@ -244,9 +263,11 @@ function renderMoveList() {
 		el.className = "move-item " + (move.p1 ? "move-p1" : "move-p2");
 		const label = move.p1 ? "X" : "O";
 		el.textContent = (i + 1) + ". " + label + " (" + move.a + ", " + move.r + ", " + move.c + ")";
+		el.onmouseenter = () => { maxMoveId = i; render(); };
 		moveListEl.appendChild(el);
 	});
 	moveListEl.scrollTop = moveListEl.scrollHeight;
+	moveListEl.onmouseleave = () => { maxMoveId = -1; render(); };
 }
 
 function renderTurnIndicator() {
@@ -259,14 +280,14 @@ function renderTurnIndicator() {
 		return;
 	}
 	const inProgress = !_gameState.winner_id && _gameState.player_id_1 && _gameState.player_id_2;
+    const isPlayer = myUserId && (
+        _gameState.player_id_1 === myUserId || _gameState.player_id_2 === myUserId
+    );
 	forfeitBtn.style.display = inProgress ? "" : "none";
 	if (_gameState.winner_id) {
 		turnEl.textContent = "Game Over";
 		turnEl.className = "turn-indicator turn-over";
 	} else if (!_gameState.player_id_1 || !_gameState.player_id_2) {
-		const isPlayer = myUserId && (
-			_gameState.player_id_1 === myUserId || _gameState.player_id_2 === myUserId
-		);
 		if (isPlayer) {
 			turnEl.textContent = "Waiting for opponent...";
 			turnEl.className = "turn-indicator turn-waiting";
@@ -282,7 +303,11 @@ function renderTurnIndicator() {
 		turnEl.textContent = "Your turn!";
 		turnEl.className = "turn-indicator turn-yours";
 	} else {
-		turnEl.textContent = "Opponent's turn";
+        if (isPlayer) {
+		    turnEl.textContent = "Opponent's turn";
+        } else {
+            turnEl.textContent = "Game in progress...";
+        }
 		turnEl.className = "turn-indicator turn-waiting";
 	}
 }
@@ -357,11 +382,26 @@ function handleClick(e) {
 	const h = canvas.height / dpr;
 	const mx = e.clientX - rect.left;
 	const my = e.clientY - rect.top;
-	// Convert screen pixel to world pixel
 	const wx = mx + camX - w / 2;
 	const wy = my + camY - h / 2;
 	const hex = pixelToHex(wx, wy);
+
+	// If clicking on own piece, attempt undo
+	const imP1 = myUserId === _gameState.player_id_1;
+	const existing = _gameState.moves.find(m => m.a === hex.a && m.r === hex.r && m.c === hex.c);
+	if (existing && existing.p1 === imP1) {
+		undoMove();
+		return;
+	}
+
 	makeMove(hex.a, hex.r, hex.c);
+}
+
+async function undoMove() {
+	const sid = getSessionId();
+	if (!sid) return;
+	const resp = await api("POST", "/api/game/undo/" + gameId, { session: sid });
+	if (resp.status === 200) setGameState(resp.data);
 }
 
 // -- Resize --

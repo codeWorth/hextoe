@@ -33,6 +33,7 @@ from util import (
     require_valid_session,
     validate_move,
     winner_index,
+    get_game_with_unames
 )
 
 
@@ -358,18 +359,6 @@ def create_private_game(session_id: str = Header(...)):
         return game.game_id
 
 
-def _get_player_names(game: Game, db: Session):
-    p1_name = None
-    p2_name = None
-    if game.player_id_1:
-        u = db.get(User, game.player_id_1)
-        if u: p1_name = get_uuname_safe(u)
-    if game.player_id_2:
-        u = db.get(User, game.player_id_2)
-        if u: p2_name = get_uuname_safe(u)
-    return p1_name, p2_name
-
-
 # Get game state
 @app.get("/api/game/{game_id}", response_model=GameStateResponse)
 def get_game(game_id: str, session_id: str = Header(None)):
@@ -379,15 +368,14 @@ def get_game(game_id: str, session_id: str = Header(None)):
             user = require_valid_session(session_id, db)
             user_id = user.user_id
 
-        game = db.get(Game, game_id)
+        game = get_game_with_unames(game_id, db)
         if game is None:
             raise HTTPException(status_code=404)
 
         moves = db.exec(
             select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
         ).all()
-        p1_name, p2_name = _get_player_names(game, db)
-        return build_game_state(game, moves, user_id, p1_name, p2_name)
+        return build_game_state(game, moves, user_id)
 
 
 # Submit a move
@@ -437,8 +425,8 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Header(...)):
         db.add(game)
         db.commit()
 
-        p1_name, p2_name = _get_player_names(game, db)
-        return build_game_state(game, moves, user.user_id, p1_name, p2_name)
+        game = get_game_with_unames(game_id, db)
+        return build_game_state(game, moves, user.user_id)
 
 
 # Undo the most recent move
@@ -447,7 +435,7 @@ def undo_move(game_id: str, session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
 
-        game = db.get(Game, game_id)
+        game = get_game_with_unames(game_id, db)
         if game is None:
             raise HTTPException(status_code=404)
 
@@ -459,13 +447,12 @@ def undo_move(game_id: str, session_id: str = Header(...)):
         ).all()
 
         current_player = get_current_player_id(game, len(moves))
-        if len(moves) % 2 == 0 or user.user_id != current_player:
+        if len(moves) % 2 != 0 or user.user_id != current_player:
             raise HTTPException(status_code=400)
 
         db.delete(moves[-1])
         db.commit()
-        p1_name, p2_name = _get_player_names(game, db)
-        return build_game_state(game, moves[:-1], user.user_id, p1_name, p2_name)
+        return build_game_state(game, moves[:-1], user.user_id)
 
 
 # Get a list of recent active games.

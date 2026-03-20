@@ -34,6 +34,8 @@ class MoveResponse(BaseModel):
 class GameStateResponse(BaseModel):
     player_id_1: Optional[str]
     player_id_2: Optional[str]
+    p1_uname: Optional[str]
+    p2_uname: Optional[str]
     winner_id: Optional[str]
     is_your_turn: bool
     moves: list[MoveResponse]
