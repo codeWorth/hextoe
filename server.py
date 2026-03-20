@@ -58,7 +58,7 @@ def serve_test():
 # -- HTTP Rest Endpoints --
 
 # Create new user
-@app.post("/user", response_model=str)
+@app.post("/api/user", response_model=str)
 def create_user(body: UserInfoBody):
     with Session(engine) as db:
         if db.exec(select(User).where(User.username == body.username)).first():
@@ -75,7 +75,7 @@ def create_user(body: UserInfoBody):
         return user.session_id
 
 
-@app.post("/anon_user", response_model=str)
+@app.post("/api/anon_user", response_model=str)
 def create_anon_user():
     with Session(engine) as db:
         user = User(
@@ -92,7 +92,7 @@ def create_anon_user():
 
 
 # Update info of existing user
-@app.put("/user", response_model=str)
+@app.put("/api/user", response_model=str)
 def update_user(body: UpdateUserBody, session_id: str = Header(...)):
     if body.username is None and body.password is None:
         raise HTTPException(status_code=400)
@@ -112,7 +112,7 @@ def update_user(body: UpdateUserBody, session_id: str = Header(...)):
 
 
 # Delete user account
-@app.delete("/user", status_code=204)
+@app.delete("/api/user", status_code=204)
 def delete_user(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -125,7 +125,7 @@ def delete_user(session_id: str = Header(...)):
 
 
 # Get current user info
-@app.get("/user", response_model=MyUserProfileResponse)
+@app.get("/api/user", response_model=MyUserProfileResponse)
 def get_current_user(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -133,7 +133,7 @@ def get_current_user(session_id: str = Header(...)):
 
 
 # Get existing user info
-@app.get("/user/{user_id}", response_model=UserProfileResponse)
+@app.get("/api/user/{user_id}", response_model=UserProfileResponse)
 def get_user(user_id: str):
     with Session(engine) as db:
         return _get_user(user_id, db)
@@ -209,7 +209,7 @@ def _get_user(user_id: str, db: Session):
 
 # User login. This generates a new session id each time, meaning any other
 # session will become invalidated
-@app.post("/user/login", response_model=str)
+@app.post("/api/user/login", response_model=str)
 def login(body: UserInfoBody):
     with Session(engine) as db:
         user = db.exec(select(User).where(User.username == body.username)).first()
@@ -223,7 +223,7 @@ def login(body: UserInfoBody):
 
 
 # User logout. This simply sets TTL to now so that it is considered expired
-@app.post("/user/logout", status_code=204)
+@app.post("/api/user/logout", status_code=204)
 def logout(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -235,7 +235,7 @@ def logout(session_id: str = Header(...)):
 # Join a game which is looking for a player, or create a public game for
 # others to join. If we already are looking for a game, we just return that
 # game id.
-@app.post("/game/join", response_model=str)
+@app.post("/api/game/join", response_model=str)
 def join_game(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -284,7 +284,7 @@ def join_game(session_id: str = Header(...)):
 
 # Create a private game. This game ID can be manually shared by users to invite
 # someone else to play directly.
-@app.post("/game/private", response_model=str)
+@app.post("/api/game/private", response_model=str)
 def create_private_game(session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -313,7 +313,7 @@ def create_private_game(session_id: str = Header(...)):
 
 
 # Get game state
-@app.get("/game/{game_id}", response_model=GameStateResponse)
+@app.get("/api/game/{game_id}", response_model=GameStateResponse)
 def get_game(game_id: str, session_id: str = Header(None)):
     with Session(engine) as db:
         user_id = None
@@ -332,7 +332,7 @@ def get_game(game_id: str, session_id: str = Header(None)):
 
 
 # Submit a move
-@app.post("/game/{game_id}", response_model=Union[GameStateResponse, MoveFailureResponse])
+@app.post("/api/game/{game_id}", response_model=Union[GameStateResponse, MoveFailureResponse])
 def make_move(game_id: str, body: MoveBody, session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -380,7 +380,7 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Header(...)):
 
 
 # Undo the most recent move
-@app.post("/game/undo/{game_id}", response_model=GameStateResponse)
+@app.post("/api/game/undo/{game_id}", response_model=GameStateResponse)
 def undo_move(game_id: str, session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
@@ -406,7 +406,7 @@ def undo_move(game_id: str, session_id: str = Header(...)):
 
 
 # Forfeit a game
-@app.post("/game/forfeit/{game_id}", status_code=204)
+@app.post("/api/game/forfeit/{game_id}", status_code=204)
 def forfeit_game(game_id: str, session_id: str = Header(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)

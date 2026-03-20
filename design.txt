@@ -30,9 +30,9 @@ Move
  - C (signed int)
 
 
-REST API
+REST API (all endpoints prefixed with /api)
 
-POST /user, accepts json, returns text
+POST /api/user, accepts json, returns text
     Body contains json:
         - username
         - password
@@ -40,15 +40,15 @@ POST /user, accepts json, returns text
     If a user exists with that username, return 409
     TODO: users might create way too many accounts
 
-POST /anon_user, accepts nothing, returns text
+POST /api/anon_user, accepts nothing, returns text
     Creates an anonymous user with a random username and no password. Returns 200 with session id.
     Anonymous users cannot update their username/password or be deleted.
 
-GET /user, accepts nothing, returns json
+GET /api/user, accepts nothing, returns json
     Header contains session id (required)
-    Returns the current user's profile (same as GET /user/<user id>) plus user_id field
+    Returns the current user's profile (same as GET /api/user/<user id>) plus user_id field
 
-PUT /user, accepts json body, returns text
+PUT /api/user, accepts json body, returns text
     Header contains session id
     Body contains json:
         - username (can be null to not modify)
@@ -58,14 +58,14 @@ PUT /user, accepts json body, returns text
     If TTL of session id is past current time, return 403
     If session id matches a user, update username and password as requested. Generate new session id and update TTL. Return new session id
 
-DELETE /user, accepts nothing returns nothing
+DELETE /api/user, accepts nothing returns nothing
     Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
     If session id matches a user, mark as deleted, return 204
     If user is anonymous, no-op, return 204
 
-GET /user/<user id>, accepts nothing, returns json
+GET /api/user/<user id>, accepts nothing, returns json
     Return json with 200:
         - username
         - list of games (all games, including in-progress ones)
@@ -76,20 +76,20 @@ GET /user/<user id>, accepts nothing, returns json
                 - winner username
         - list of current game ids (in-progress games)
 
-POST /user/login, accept json body, return text
+POST /api/user/login, accept json body, return text
     Body contains json:
         - username
         - password
     If that username password does not match anyone, return 404
     If it matches a user, set a new session id and update TTL. return 200 with session id
 
-POST /user/logout, accepts nothing, returns nothing
+POST /api/user/logout, accepts nothing, returns nothing
      Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
     If session id matches a user, set TTL to current time. Return 204
 
-POST /game/join, takes nothing, returns text
+POST /api/game/join, takes nothing, returns text
     Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
@@ -97,13 +97,13 @@ POST /game/join, takes nothing, returns text
     If there are public games with one player id missing, create a new entry in the game list w/ lfp true. Randomly populate either player 1 id or player 2 id with this user. Return 200 with the game id
     If there is a public game with one player id missing, chose the one with the oldest creation date. Populate the missing player id with this player's id. Return 200 with the game id
 
-POST /game/private takes nothing, returns text
+POST /api/game/private takes nothing, returns text
     Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
     Creates a new non public game, returns 200 and the game id
 
-GET /game/<game_id> takes nothing, returns json
+GET /api/game/<game_id> takes nothing, returns json
     Header contains session id (optional)
     If the game id doesn't exist, returns 404
     Responds with 200 and response body:
@@ -116,7 +116,7 @@ GET /game/<game_id> takes nothing, returns json
              - R (int)
              - C (int)
 
-POST /game/<game_id> takes json, returns json
+POST /api/game/<game_id> takes json, returns json
     Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
@@ -127,12 +127,12 @@ POST /game/<game_id> takes json, returns json
         - R: int
         - C: int
     If the move is valid, the server returns 200 with response body:
-        The current game state, same as GET /game/<game id>
+        The current game state, same as GET /api/game/<game id>
     If the move is invalid, the server returns 200 with response body:
         - failure reason: some string
 
 
-POST /game/undo/<game id> takes nothing, returns json
+POST /api/game/undo/<game id> takes nothing, returns json
     Header contains session id
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
@@ -142,7 +142,7 @@ POST /game/undo/<game id> takes nothing, returns json
     If the player can undo the most recent move, returns 200 and response body:
         - same response body as GET /game/<game id>
 
-POST /game/forfeit/<game id> takes nothing, returns nothing
+POST /api/game/forfeit/<game id> takes nothing, returns nothing
     Header contains session id
     If the user is not a player in this game or the game is already complete, returns 404
     If both players are present, sets winner to the other player and marks game complete, returns 204

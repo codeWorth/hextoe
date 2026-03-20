@@ -87,40 +87,40 @@ async function runTests() {
 	// =====================
 	section("POST /user - Create users");
 
-	let r = await request("POST", "/user", { body: { username: USER1, password: PASSWORD } });
+	let r = await request("POST", "/api/user", { body: { username: USER1, password: PASSWORD } });
 	assertStatus(r.status, 200, "Create user1");
 	assert(typeof r.data === "string" && r.data.length > 0, "Returns session id string");
 	session1 = r.data;
 	info("user1 session: " + session1.slice(0, 16) + "...");
 
-	r = await request("POST", "/user", { body: { username: USER2, password: PASSWORD } });
+	r = await request("POST", "/api/user", { body: { username: USER2, password: PASSWORD } });
 	assertStatus(r.status, 200, "Create user2");
 	session2 = r.data;
 	info("user2 session: " + session2.slice(0, 16) + "...");
 
 	// Duplicate username
-	r = await request("POST", "/user", { body: { username: USER1, password: PASSWORD } });
+	r = await request("POST", "/api/user", { body: { username: USER1, password: PASSWORD } });
 	assertStatus(r.status, 409, "Duplicate username");
 
 	// ---- Login ----
 	section("POST /user/login");
 
-	r = await request("POST", "/user/login", { body: { username: USER1, password: PASSWORD } });
+	r = await request("POST", "/api/user/login", { body: { username: USER1, password: PASSWORD } });
 	assertStatus(r.status, 200, "Login");
 	assert(r.data !== session1, "Login returns a new session id");
 	session1 = r.data;
 
-	r = await request("POST", "/user/login", { body: { username: USER1, password: "wrongpass" } });
+	r = await request("POST", "/api/user/login", { body: { username: USER1, password: "wrongpass" } });
 	assertStatus(r.status, 404, "Bad password");
 
 	// ---- Update user ----
 	section("PUT /user - Update user");
 
-	r = await request("PUT", "/user", { body: { username: null, password: null }, session: session1 });
+	r = await request("PUT", "/api/user", { body: { username: null, password: null }, session: session1 });
 	assertStatus(r.status, 400, "Null username and password");
 
 	const NEW_USER1 = USER1 + "_renamed";
-	r = await request("PUT", "/user", { body: { username: NEW_USER1, password: null }, session: session1 });
+	r = await request("PUT", "/api/user", { body: { username: NEW_USER1, password: null }, session: session1 });
 	assertStatus(r.status, 200, "Update username");
 	session1 = r.data;
 
@@ -130,22 +130,22 @@ async function runTests() {
 	// We need the user_id. Login again to get fresh session, then we need to figure out
 	// the user_id. The API doesn't return user_id directly, so let's use the game
 	// endpoints later to discover it. For now, test with a bad id.
-	r = await request("GET", "/user/nonexistent_id");
+	r = await request("GET", "/api/user/nonexistent_id");
 	assertStatus(r.status, 404, "Nonexistent user");
 
 	// ---- Logout ----
 	section("POST /user/logout");
 
-	r = await request("POST", "/user/logout", { session: session1 });
+	r = await request("POST", "/api/user/logout", { session: session1 });
 	assertStatus(r.status, 204, "Logout");
 
 	// Session should be expired now
     await sleep(500);
-	r = await request("POST", "/user/logout", { session: session1 });
+	r = await request("POST", "/api/user/logout", { session: session1 });
 	assertStatus(r.status, 403, "Expired session");
 
 	// Re-login to continue tests
-	r = await request("POST", "/user/login", { body: { username: NEW_USER1, password: PASSWORD } });
+	r = await request("POST", "/api/user/login", { body: { username: NEW_USER1, password: PASSWORD } });
 	session1 = r.data;
 	info("user1 re-logged in");
 
@@ -154,25 +154,25 @@ async function runTests() {
 	// =====================
 	section("POST /game/join - Public game");
 
-	r = await request("POST", "/game/join", { session: session1 });
+	r = await request("POST", "/api/game/join", { session: session1 });
 	assertStatus(r.status, 200, "User1 join");
 	const publicGameId = r.data;
 	info("public game id: " + publicGameId.slice(0, 16) + "...");
 
 	// Same user joining again returns same game
-	r = await request("POST", "/game/join", { session: session1 });
+	r = await request("POST", "/api/game/join", { session: session1 });
 	assertStatus(r.status, 200, "User1 join again");
 	assertEq(r.data, publicGameId, "Returns same game id for user already in a public game");
 
 	// User2 joins and should be matched
-	r = await request("POST", "/game/join", { session: session2 });
+	r = await request("POST", "/api/game/join", { session: session2 });
 	assertStatus(r.status, 200, "User2 join");
 	assertEq(r.data, publicGameId, "User2 matched into same public game");
 
 	// ---- Get game state to find player assignments ----
 	section("GET /game/:id - Initial game state");
 
-	r = await request("GET", "/game/" + publicGameId, { session: session1 });
+	r = await request("GET", "/api/game/" + publicGameId, { session: session1 });
 	assertStatus(r.status, 200, "Get game");
 	const initialState = r.data;
 	assert(initialState.player_id_1 != null, "player_id_1 is set");
@@ -186,7 +186,7 @@ async function runTests() {
 	info("player_id_2: " + p2Id.slice(0, 16) + "...");
 
 	// Determine which session belongs to which player using GET /user
-	r = await request("GET", "/user", { session: session1 });
+	r = await request("GET", "/api/user", { session: session1 });
 	const user1Id = r.data.user_id;
 	let sessionP1, sessionP2;
 	if (user1Id === p1Id) {
@@ -200,7 +200,7 @@ async function runTests() {
 	}
 
 	// Make the first move
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 0 },
 		session: sessionP1,
 	});
@@ -216,7 +216,7 @@ async function runTests() {
 	assertEq(state.moves, [{a:0, r:0, c:0}], "Moves list after move 0");
 
 	// Move 1: P2 plays (0, 0, 1)
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 1 },
 		session: sessionP2,
 	});
@@ -225,7 +225,7 @@ async function runTests() {
 	assertEq(state.moves, [{a:0,r:0,c:0}, {a:0,r:0,c:1}], "Moves list after move 1");
 
 	// Move 2: P2 plays (0, 0, 2) - P2 gets two moves in a row
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 2 },
 		session: sessionP2,
 	});
@@ -234,14 +234,14 @@ async function runTests() {
 	assertEq(state.moves, [{a:0,r:0,c:0}, {a:0,r:0,c:1}, {a:0,r:0,c:2}], "Moves list after move 2");
 
 	// Wrong player tries to move
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 3 },
 		session: sessionP2,
 	});
 	assertStatus(r.status, 400, "Wrong player moving");
 
 	// Move 3: P1 plays (0, 0, 3)
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 3 },
 		session: sessionP1,
 	});
@@ -254,7 +254,7 @@ async function runTests() {
 	);
 
 	// Duplicate move
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 0 },
 		session: sessionP1,
 	});
@@ -266,13 +266,13 @@ async function runTests() {
 	section("POST /game/undo/:id - Undo move");
 
 	// We have 4 moves (even), so undo should fail per the odd-count rule
-	r = await request("POST", "/game/undo/" + publicGameId, { session: sessionP1 });
+	r = await request("POST", "/api/game/undo/" + publicGameId, { session: sessionP1 });
 	info("Undo with 4 moves (even): status=" + r.status);
 	assertStatus(r.status, 400, "Undo with even move count");
 
 	// Make one more move to get to 5 (odd), then undo should work
 	// Move 4: P1 plays (0, 0, 4)
-	r = await request("POST", "/game/" + publicGameId, {
+	r = await request("POST", "/api/game/" + publicGameId, {
 		body: { a: 0, r: 0, c: 4 },
 		session: sessionP1,
 	});
@@ -284,7 +284,7 @@ async function runTests() {
 	);
 
 	// Now 5 moves (odd), current player is P2. Undo should be allowed.
-	r = await request("POST", "/game/undo/" + publicGameId, { session: sessionP2 });
+	r = await request("POST", "/api/game/undo/" + publicGameId, { session: sessionP2 });
 	if (r.status === 500) {
 		fail("Undo returned 500 - likely bug: 'user' variable not assigned in undo_move (server.py line 337)");
 	} else {
@@ -301,20 +301,20 @@ async function runTests() {
 	// =====================
 	section("POST /game/private - Private game");
 
-	r = await request("POST", "/game/private", { session: sessionP1 });
+	r = await request("POST", "/api/game/private", { session: sessionP1 });
 	assertStatus(r.status, 200, "Create private game");
 	const privateGameId = r.data;
 	assert(typeof privateGameId === "string" && privateGameId.length > 0, "Returns game id string");
 	info("private game id: " + privateGameId.slice(0, 16) + "...");
 
 	// Creating again returns same game (idempotent while waiting for opponent)
-	r = await request("POST", "/game/private", { session: sessionP1 });
+	r = await request("POST", "/api/game/private", { session: sessionP1 });
 	assertEq(r.data, privateGameId, "Second private game call returns same game id");
 
 	// ---- Get user profile (now that we know user ids) ----
 	section("GET /user/:id - User profile with games");
 
-	r = await request("GET", "/user/" + p1Id);
+	r = await request("GET", "/api/user/" + p1Id);
 	assertStatus(r.status, 200, "Get user profile");
 	assert(r.data.games.length >= 1, "User has at least 1 game in game list");
 	info("user1 has " + r.data.games.length + " game(s), " + r.data.current_game_ids.length + " in-progress");
@@ -324,7 +324,7 @@ async function runTests() {
 	// =====================
 	section("GET /user - Get current user");
 
-	r = await request("GET", "/user", { session: session1 });
+	r = await request("GET", "/api/user", { session: session1 });
 	assertStatus(r.status, 200, "Get current user");
 	assertEq(r.data.username, NEW_USER1, "Current user username matches");
 	assert(Array.isArray(r.data.games), "Current user has games array");
@@ -336,19 +336,19 @@ async function runTests() {
 	section("DELETE /user - Deleted user behavior");
 
 	// Delete user2 and verify behavior
-	r = await request("DELETE", "/user", { session: sessionP2 });
+	r = await request("DELETE", "/api/user", { session: sessionP2 });
 	assertStatus(r.status, 204, "Delete user2");
 
 	// Deleted user should return 404 on get
-	r = await request("GET", "/user/" + p2Id);
+	r = await request("GET", "/api/user/" + p2Id);
 	assertStatus(r.status, 404, "Get deleted user returns 404");
 
 	// Deleted user's session should be expired (403)
-	r = await request("POST", "/user/logout", { session: sessionP2 });
+	r = await request("POST", "/api/user/logout", { session: sessionP2 });
 	assertStatus(r.status, 403, "Deleted user session is expired");
 
 	// User1's game list should show null opponent_username for the deleted user
-	r = await request("GET", "/user/" + p1Id);
+	r = await request("GET", "/api/user/" + p1Id);
 	assertStatus(r.status, 200, "Get user1 profile after user2 deleted");
 	const gameWithDeletedOpponent = r.data.games.find(g => g.game_id === publicGameId);
 	assert(gameWithDeletedOpponent !== undefined, "Public game found in user1's games");
@@ -359,36 +359,36 @@ async function runTests() {
 	// =====================
 	section("POST /anon_user - Anonymous users");
 
-	r = await request("POST", "/anon_user");
+	r = await request("POST", "/api/anon_user");
 	assertStatus(r.status, 200, "Create anon user");
 	const anonSession = r.data;
 	assert(typeof anonSession === "string" && anonSession.length > 0, "Returns anon session id");
 	info("anon session: " + anonSession.slice(0, 16) + "...");
 
 	// Anon user can get their own info via GET /user
-	r = await request("GET", "/user", { session: anonSession });
+	r = await request("GET", "/api/user", { session: anonSession });
 	assertStatus(r.status, 200, "Get current anon user");
 	assertEq(r.data.username, "Anonymous", "Anon user username is Anonymous");
 
 	// Update should no-op for anon user (returns same session)
-	r = await request("PUT", "/user", { body: { username: "hacker", password: null }, session: anonSession });
+	r = await request("PUT", "/api/user", { body: { username: "hacker", password: null }, session: anonSession });
 	assertStatus(r.status, 200, "Update anon user returns 200");
 	assertEq(r.data, anonSession, "Anon update returns same session id (no-op)");
 
 	// Anon user can still get their info (username unchanged)
-	r = await request("GET", "/user", { session: anonSession });
+	r = await request("GET", "/api/user", { session: anonSession });
 	assertEq(r.data.username, "Anonymous", "Anon username still Anonymous after update attempt");
 
 	// Delete should no-op for anon user
-	r = await request("DELETE", "/user", { session: anonSession });
+	r = await request("DELETE", "/api/user", { session: anonSession });
 	assertStatus(r.status, 204, "Delete anon user returns 204");
 
 	// Anon user should still be usable after delete no-op
-	r = await request("GET", "/user", { session: anonSession });
+	r = await request("GET", "/api/user", { session: anonSession });
 	assertStatus(r.status, 200, "Anon user still accessible after delete no-op");
 
 	// Anon user can join a game
-	r = await request("POST", "/game/join", { session: anonSession });
+	r = await request("POST", "/api/game/join", { session: anonSession });
 	assertStatus(r.status, 200, "Anon user can join game");
 	const anonGameId = r.data;
 
@@ -399,34 +399,34 @@ async function runTests() {
 
 	// Forfeit the public game (both players present, user1 forfeits so user2 wins)
 	// user2 is deleted but still has a user_id in the game; winner should be p2Id
-	r = await request("POST", "/game/forfeit/" + publicGameId, { session: sessionP1 });
+	r = await request("POST", "/api/game/forfeit/" + publicGameId, { session: sessionP1 });
 	assertStatus(r.status, 204, "Forfeit public game");
 
-	r = await request("GET", "/game/" + publicGameId);
+	r = await request("GET", "/api/game/" + publicGameId);
 	assertStatus(r.status, 200, "Get public game after forfeit");
 	assertEq(r.data.winner_id, p2Id, "Public game winner is other player (p2)");
 	assertEq(r.data.is_your_turn, false, "Public game is_your_turn is false (complete)");
 
 	// Forfeit the private game (only one player, no opponent yet)
-	r = await request("POST", "/game/forfeit/" + privateGameId, { session: sessionP1 });
+	r = await request("POST", "/api/game/forfeit/" + privateGameId, { session: sessionP1 });
 	assertStatus(r.status, 204, "Forfeit private game (no opponent)");
 
-	r = await request("GET", "/game/" + privateGameId);
+	r = await request("GET", "/api/game/" + privateGameId);
 	assertStatus(r.status, 200, "Get private game after forfeit");
 	assertEq(r.data.winner_id, null, "Private game winner is null (no opponent)");
 	assertEq(r.data.is_your_turn, false, "Private game is_your_turn is false (complete)");
 
 	// Forfeit the anon game (only one player, no opponent yet)
-	r = await request("POST", "/game/forfeit/" + anonGameId, { session: anonSession });
+	r = await request("POST", "/api/game/forfeit/" + anonGameId, { session: anonSession });
 	assertStatus(r.status, 204, "Forfeit anon game (no opponent)");
 
-	r = await request("GET", "/game/" + anonGameId);
+	r = await request("GET", "/api/game/" + anonGameId);
 	assertStatus(r.status, 200, "Get anon game after forfeit");
 	assertEq(r.data.winner_id, null, "Anon game winner is null (no opponent)");
 	assertEq(r.data.is_your_turn, false, "Anon game is_your_turn is false (complete)");
 
 	// Forfeiting an already-complete game should 404
-	r = await request("POST", "/game/forfeit/" + publicGameId, { session: sessionP1 });
+	r = await request("POST", "/api/game/forfeit/" + publicGameId, { session: sessionP1 });
 	assertStatus(r.status, 404, "Forfeit already-complete game returns 404");
 
 	// =====================
@@ -434,7 +434,7 @@ async function runTests() {
 	// =====================
 	section("DELETE /user - Cleanup");
 
-	r = await request("DELETE", "/user", { session: sessionP1 });
+	r = await request("DELETE", "/api/user", { session: sessionP1 });
 	assertStatus(r.status, 204, "Delete user1");
 
 	log("\n--- Tests complete ---", "info");
