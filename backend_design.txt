@@ -33,23 +33,23 @@ Move
 
 REST API (all endpoints prefixed with /api)
 
-POST /api/user, accepts json, returns text
+POST /api/user, accepts json, returns nothing
     Body contains json:
         - username
         - password
-    If no user with that username exists, create entry in user table, which will include session id and ttl. Return 200 with session id
+    If no user with that username exists, create entry in user table, which will include session id and ttl. Return 200 and sets session id
     If a user exists with that username, return 409
     TODO: users might create way too many accounts
 
-POST /api/anon_user, accepts nothing, returns text
-    Creates an anonymous user with a random username and no password. Returns 200 with session id.
+POST /api/anon_user, accepts nothing, returns nothing
+    Creates an anonymous user with a random username and no password. Returns 200 and sets session id.
     Anonymous users cannot update their username/password or be deleted.
 
 GET /api/user, accepts nothing, returns json
     Header contains session id (required)
     Returns the current user's profile (same as GET /api/user/<user id>) plus user_id field
 
-PUT /api/user, accepts json body, returns text
+PUT /api/user, accepts json body, returns nothing
     Header contains session id
     Body contains json:
         - username (can be null to not modify)
@@ -57,7 +57,7 @@ PUT /api/user, accepts json body, returns text
     If username and password are null, return 400
     If session id doesn't match any user, return 403
     If TTL of session id is past current time, return 403
-    If session id matches a user, update username and password as requested. Generate new session id and update TTL. Return new session id
+    If session id matches a user, update username and password as requested. Generate new session id and update TTL. Set new session id
 
 DELETE /api/user, accepts nothing returns nothing
     Header contains session id
@@ -77,12 +77,12 @@ GET /api/user/<user id>, accepts nothing, returns json
                 - winner username
         - list of current game ids (in-progress games)
 
-POST /api/user/login, accept json body, return text
+POST /api/user/login, accept json body, return nothing
     Body contains json:
         - username
         - password
     If that username password does not match anyone, return 404
-    If it matches a user, set a new session id and update TTL. return 200 with session id
+    If it matches a user, set a new session id and update TTL. return 204 and set session id
 
 POST /api/user/logout, accepts nothing, returns nothing
      Header contains session id

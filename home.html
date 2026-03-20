@@ -318,10 +318,10 @@ window.addEventListener("resize", renderCanvas);
 async function init() {
 	await loadUser();
 	await loadGames();
-	// Refresh game list and viewer every 10 seconds
+	// Refresh game list and viewer every 5 seconds
 	setInterval(async () => {
 		await loadGames();
-	}, 10000);
+	}, 5000);
 }
 init();
 </script>
