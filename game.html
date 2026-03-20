@@ -91,6 +91,7 @@
 	</div>
 
 <script src="/src/hex.js"></script>
+<script src="/src/util.js"></script>
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -194,15 +195,8 @@ function renderPlayerInfo() {
 	el.innerHTML = "";
 	if (!_gameState) return;
 
-	let p1Name = _gameState.p1_uname;
-	let p2Name = _gameState.p2_uname;
-    if (!_gameState.player_id_1 || !_gameState.player_id_2) {
-        p1Name = p1Name || "...";
-        p2Name = p2Name || "...";
-    } else {
-        p1Name = p1Name || "[Deleted]";
-        p2Name = p2Name || "[Deleted]";    
-    }
+	let p1Name = formatUname(_gameState.p1_uname, _gameState.player_id_1);
+	let p2Name = formatUname(_gameState.p2_uname, _gameState.player_id_2);
 
 	// If both are Anonymous and we're in the game, label ourselves "You"
 	const isP1 = myUserId && myUserId === _gameState.player_id_1;

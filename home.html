@@ -93,6 +93,7 @@
 	</div>
 
 <script src="/src/hex.js"></script>
+<script src="/src/util.js"></script>
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -200,7 +201,7 @@ function renderGameList() {
 
 		const p1 = document.createElement("span");
 		p1.className = "p1";
-		p1.textContent = game.p1_uname || "???";
+		p1.textContent = game.p1_uname || "[Deleted]";
 
 		const mid = document.createElement("span");
 		mid.className = "moves";
@@ -208,7 +209,7 @@ function renderGameList() {
 
 		const p2 = document.createElement("span");
 		p2.className = "p2";
-		p2.textContent = game.p2_uname || "???";
+		p2.textContent = game.p2_uname || "[Deleted]";
 
 		if (game.is_complete && game.winner_index === 1) {
 			p1.classList.add("winner");

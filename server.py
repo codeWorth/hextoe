@@ -72,6 +72,11 @@ def serve_hex_js():
     return FileResponse("hex.js")
 
 
+@app.get("/src/util.js")
+def serve_hex_js():
+    return FileResponse("util.js")
+
+
 @app.get("/test")
 def serve_test():
     return FileResponse("test.html")
