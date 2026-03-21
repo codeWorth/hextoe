@@ -190,7 +190,7 @@ function renderMoveList() {
     let lengthChanged = false;
     for (let i = moveListEl.children.length-1; i >= 0; i--) {
         const child = moveListEl.children[i];
-        const moveIndex = child.dataset.move_index;
+        const moveIndex = parseInt(child.dataset.move_index);
         if (moveIndex === undefined) {
             continue;
         }
@@ -200,7 +200,7 @@ function renderMoveList() {
             lengthChanged = true;
             continue;
         }
-        populateMoveItem(child, _gameState.moves[moveIndex], moveIndex);
+        populateMoveItem(child, _gameState.moves[moveIndex],moveIndex);
     }
     for (let i = lastIndex+1; i < _gameState.moves.length; i++) {
 		const el = document.createElement("div");
