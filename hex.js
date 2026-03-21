@@ -77,6 +77,10 @@ function drawO(ctx, cx, cy, size) {
 // camX/camY are camera offsets in pixel space.
 // moves is an array of {a, r, c, p1} objects (can be null/empty).
 function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves) {
+	let submoves = moves;
+	if (highlightIndex >= 0) {
+		submoves = moves.slice(0, highlightIndex + 1);
+	}
 	const dpr = window.devicePixelRatio || 1;
 	canvas.style.width = "0";
 	canvas.style.height = "0";
@@ -114,10 +118,10 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves)
 		}
 	}
 
-	if (!moves) return;
+	if (!submoves) return;
 
-	for (let i = 0; i < moves.length; i++) {
-		const move = moves[i];
+	for (let i = 0; i < submoves.length; i++) {
+		const move = submoves[i];
 		const pos = hexToPixel(move.a, move.r, move.c);
 		const sx = pos.x - camX + w / 2;
 		const sy = pos.y - camY + h / 2;

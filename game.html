@@ -123,11 +123,7 @@ const cam = setupPanning(canvas, render, handleClick);
 
 function render() {
 	const moves = _gameState ? _gameState.moves : null;
-	let submoves = moves;
-	if (maxMoveId >= 0) {
-		submoves = moves.slice(0, maxMoveId + 1);
-	}
-	renderHexGrid(canvas, ctx, cam.x, cam.y, submoves, maxMoveId, winningMoves);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves);
 }
 
 function renderPlayerInfo() {
