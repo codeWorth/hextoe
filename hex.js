@@ -125,7 +125,7 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves)
 
 		let fill = move.p1 ? "#3a2a2a" : "#2a2a3a";
 		if (highlightIndex < 0 && winMoves && winMoves.includes(i)) {
-			fill = move.p1 ? "#4d3838" : "#3c3c51";
+			fill = move.p1 ? "#4d3838" : "#3a3a4f";
 		}
 		let stroke = move.p1 ? "#6a4a4a" : "#4a4a6a";
 		if (highlightIndex >= 0 && i === highlightIndex) {
