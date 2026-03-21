@@ -239,6 +239,8 @@ def get_game_with_unames(game_id, db):
             Game.creation_time,
             Game.move_time,
             Game.is_public,
+            Game.last_req_p1,
+            Game.last_req_p2,
             Player1.username.label("p1_uname"),
             Player1.is_deleted.label("p1_deleted"),
             Player1.is_anon.label("p1_anon"),
