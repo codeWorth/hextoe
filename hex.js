@@ -116,6 +116,17 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves)
 
 	if (!moves) return;
 
+	for (const move of moves) {
+		const pos = hexToPixel(move.a, move.r, move.c);
+		const sx = pos.x - camX + w / 2;
+		const sy = pos.y - camY + h / 2;
+		if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
+
+		const fill = move.p1 ? "#3a2a2a" : "#2a2a3a";
+		drawHex(ctx, sx, sy, HEX_SIZE, fill, move.p1 ? "#6a4a4a" : "#4a4a6a");
+		if (move.p1) drawX(ctx, sx, sy, HEX_SIZE);
+		else drawO(ctx, sx, sy, HEX_SIZE);
+	}
 	for (let i = 0; i < moves.length; i++) {
 		const move = moves[i];
 		const pos = hexToPixel(move.a, move.r, move.c);
@@ -129,10 +140,9 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves)
 		} else if (highlightIndex < 0 && winMoves && winMoves.includes(i)) {
 			isHighlight = true;
 		}
-		const fill = move.p1 ? "#3a2a2a" : "#2a2a3a";
-		const stroke = isHighlight ? "#ddd" : (move.p1 ? "#6a4a4a" : "#4a4a6a");
-		drawHex(ctx, sx, sy, HEX_SIZE, fill, stroke);
-		if (move.p1) drawX(ctx, sx, sy, HEX_SIZE);
-		else drawO(ctx, sx, sy, HEX_SIZE);
+		if(!isHighlight) {
+			continue;
+		}
+		drawHex(ctx, sx, sy, HEX_SIZE, null, "#ddd");
 	}
 }
