@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
 
-from db_schemas import Game, Move, User, ID_LEN
+from db_schemas import Game, Move, User, ID_LEN_BYTES
 
 SESSION_TTL_HOURS = 48
 MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
@@ -238,12 +238,12 @@ def get_game_with_unames(game_id, db):
             Game.creation_time,
             Game.move_time,
             Game.is_public,
-            func.any_value(Player1.username).label("p1_uname"),
-            func.any_value(Player1.is_deleted).label("p1_deleted"),
-            func.any_value(Player1.is_anon).label("p1_anon"),
-            func.any_value(Player2.username).label("p2_uname"),
-            func.any_value(Player2.is_deleted).label("p2_deleted"),
-            func.any_value(Player2.is_anon).label("p2_anon"),
+            Player1.username.label("p1_uname"),
+            Player1.is_deleted.label("p1_deleted"),
+            Player1.is_anon.label("p1_anon"),
+            Player2.username.label("p2_uname"),
+            Player2.is_deleted.label("p2_deleted"),
+            Player2.is_anon.label("p2_anon"),
         )
         .where(Game.game_id == game_id)
         .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
