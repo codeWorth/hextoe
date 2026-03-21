@@ -271,6 +271,7 @@ def update_game_last_req(game_id, pid, db):
             )
         )
     )
+    db.commit()
 
 
 # Afk time
