@@ -291,7 +291,7 @@ def prune_afk_games(db, user_id=None, n_recent=None):
             ),
             or_(Game.player_id_1 == None, Game.player_id_2 == None),
         )
-    if user is not None:
+    if user_id is not None:
         stmt = stmt.where(
             or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
     if n_recent is not None:
@@ -306,7 +306,7 @@ def prune_afk_games(db, user_id=None, n_recent=None):
             is_complete=True,
             winner_id=Game.player_id_2,
         )
-    if user is not None:
+    if user_id is not None:
         stmt = stmt.where(
             or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
     if n_recent is not None:
@@ -321,7 +321,7 @@ def prune_afk_games(db, user_id=None, n_recent=None):
             is_complete=True,
             winner_id=Game.player_id_1,
         )
-    if user is not None:
+    if user_id is not None:
         stmt = stmt.where(
             or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
     if n_recent is not None:
