@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import LargeBinary
+from sqlalchemy import Column, LargeBinary
 from sqlmodel import Field, SQLModel
 
 ID_LEN = 36
@@ -11,7 +11,7 @@ UNAME_MAX = 64
 class User(SQLModel, table=True):
     user_id: str = Field(max_length=ID_LEN, primary_key=True)
     username: str = Field(max_length=UNAME_MAX, unique=True)
-    password_hash: bytes = Field(sa_column_kwargs={"type_": LargeBinary(60)})
+    password_hash: bytes = Field(sa_column=Column(LargeBinary(60), nullable=False))
     session_id: str = Field(max_length=ID_LEN, index=True)
     session_ttl: datetime
     is_deleted: bool = Field(default=False)

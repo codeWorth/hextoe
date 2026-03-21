@@ -24,7 +24,7 @@ def verify_password(password: str, password_hash: bytes) -> bool:
 
 
 def new_id_str() -> str:
-    return secrets.token_urlsafe(ID_LEN)
+    return secrets.token_urlsafe(ID_LEN - 1)
 
 
 def new_session_ttl() -> datetime:
