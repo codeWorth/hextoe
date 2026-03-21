@@ -60,6 +60,9 @@ canvas { background: var(--bg-canvas); border-radius: 8px; }
 	padding: 0;
 }
 .recenter-btn:hover { background: rgba(74, 74, 74, 1); color: var(--text); }
+.recenter-btn span {
+	margin-top: -2px;
+}
 
 .game-list {
 	background: var(--bg-dark); border-radius: 8px;
