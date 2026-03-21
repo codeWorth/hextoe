@@ -4,7 +4,8 @@ from typing import Optional
 from sqlalchemy import Column, LargeBinary
 from sqlmodel import Field, SQLModel
 
-ID_LEN = 36
+ID_LEN_BYTES = 32
+ID_LEN = (ID_LEN_BYTES * 3) // 2
 UNAME_MAX = 64
 
 # User always has some session_id, but the TTL may indicate it has expired.
