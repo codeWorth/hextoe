@@ -56,53 +56,6 @@ def on_startup():
     SQLModel.metadata.create_all(engine)
 
 
-# -- Webpages --
-
-@app.get("/")
-def serve_home():
-    return FileResponse("home.html")
-
-
-@app.get("/login")
-def serve_login():
-    return FileResponse("login.html")
-
-
-@app.get("/changeinfo")
-def serve_change_info():
-    return FileResponse("change_info.html")
-
-
-@app.get("/user/{user_id}")
-def serve_user_page(user_id: str):
-    return FileResponse("user.html")
-
-
-@app.get("/game/{game_id}")
-def serve_game(game_id: str):
-    return FileResponse("game.html")
-
-
-@app.get("/src/hex.js")
-def serve_hex_js():
-    return FileResponse("hex.js")
-
-
-@app.get("/src/util.js")
-def serve_util_js():
-    return FileResponse("util.js")
-
-
-@app.get("/src/hextoe.css")
-def serve_hextoe_css():
-    return FileResponse("hextoe.css")
-
-
-# @app.get("/test")
-# def serve_test():
-#    return FileResponse("test.html")
-
-
 def _set_session_cookie(response: Response, session_id: str, session_ttl: datetime):
     max_age = int((session_ttl - datetime.utcnow()).total_seconds())
     response.set_cookie(
