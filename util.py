@@ -282,9 +282,10 @@ def get_min_req():
 # - A game in which either last_req time is more than 10 minutes ago is a candidate
 # - If only 1 player has joined, just delete the game
 # - If both players have joined, the AFK one forfeits
-def prune_afk_games(db, user_id=None, n_recent=None):
+def prune_afk_games(db, user_id=None):
     min_req = get_min_req()
     stmt = delete(Game).where(
+            Game.is_complete == False,
             or_(
                 and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
                 and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
@@ -294,11 +295,10 @@ def prune_afk_games(db, user_id=None, n_recent=None):
     if user_id is not None:
         stmt = stmt.where(
             or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
-    if n_recent is not None:
-        stmt = stmt.order_by(Game.move_time.desc()).limit(n_recent)
     db.exec(stmt)
 
     stmt = update(Game).where(
+            Game.is_complete == False,
             and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
             Game.player_id_1 != None,
             Game.player_id_2 != None,
@@ -309,11 +309,10 @@ def prune_afk_games(db, user_id=None, n_recent=None):
     if user_id is not None:
         stmt = stmt.where(
             or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
-    if n_recent is not None:
-        stmt = stmt.order_by(Game.move_time.desc()).limit(n_recent)
     db.exec(stmt)
 
     stmt = update(Game).where(
+            Game.is_complete == False,
             and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
             Game.player_id_1 != None,
             Game.player_id_2 != None,
@@ -324,7 +323,5 @@ def prune_afk_games(db, user_id=None, n_recent=None):
     if user_id is not None:
         stmt = stmt.where(
             or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
-    if n_recent is not None:
-        stmt = stmt.order_by(Game.move_time.desc()).limit(n_recent)
     db.exec(stmt)
     db.commit()

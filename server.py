@@ -543,8 +543,7 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
 @app.post("/api/games", response_model=GameListResponse)
 def get_games():
     with Session(engine) as db:
-        # Let's check the last 75 games just in case we're gonna prune a lot of them
-        prune_afk_games(db, n_recent=75)
+        prune_afk_games(db)
         Player1 = aliased(User)
         Player2 = aliased(User)
         games = db.exec(

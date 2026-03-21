@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, LargeBinary
+from sqlalchemy import Column, Index, LargeBinary
 from sqlmodel import Field, SQLModel
 
 ID_LEN_BYTES = 32
@@ -33,6 +33,14 @@ class Game(SQLModel, table=True):
     is_public: bool = Field(default=True)
     last_req_p1: Optional[datetime] = Field(default=None)
     last_req_p2: Optional[datetime] = Field(default=None)
+
+    __table_args__ = (
+        Index("ix_game_complete_last_req_p1", "is_complete", "last_req_p1"),
+        Index("ix_game_complete_last_req_p2", "is_complete", "last_req_p2"),
+        Index("ix_game_move_time", "move_time"),
+        Index("ix_game_player_id_1", "player_id_1"),
+        Index("ix_game_player_id_2", "player_id_2"),
+    )
 
 
 class Move(SQLModel, table=True):
