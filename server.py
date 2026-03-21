@@ -39,7 +39,10 @@ from util import (
 
 # -- DB setup --
 
-DATABASE_URL = os.environ['HEXTOE_DB_URL']
+DATABASE_URL = os.getenv("HEXTOE_DB_URL")
+if not DATABASE_URL:
+    raise RuntimeError("HEXTOE_DB_URL is not set in the environment")
+
 engine = create_engine(DATABASE_URL)
 
 app = FastAPI()
@@ -92,9 +95,9 @@ def serve_hextoe_css():
     return FileResponse("hextoe.css")
 
 
-@app.get("/test")
-def serve_test():
-    return FileResponse("test.html")
+# @app.get("/test")
+# def serve_test():
+#    return FileResponse("test.html")
 
 
 def _set_session_cookie(response: Response, session_id: str, session_ttl: datetime):
