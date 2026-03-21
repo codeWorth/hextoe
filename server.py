@@ -422,7 +422,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
         if game is None:
             raise HTTPException(status_code=404)
 
-        if user is not None:
+        if user_id is not None:
             other_last_req = None
             if game.player_id_1 == user_id:
                 other_last_req = game.last_req_p2
