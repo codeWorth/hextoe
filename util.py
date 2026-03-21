@@ -259,7 +259,7 @@ def update_game_last_req(game_id, pid, db):
     now = datetime.utcnow()
     db.exec(
         update(Game)
-        .where(Game.user_id == game_id)
+        .where(Game.game_id == game_id)
         .values(
             last_req_p1=case(
                 (Game.player_id_1 == pid, now),
