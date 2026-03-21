@@ -278,50 +278,57 @@ def update_game_last_req(game_id, pid, db):
 def get_min_req():
     return datetime.utcnow() - timedelta(minutes=MAX_GAME_AGE_MINUTES)
 
+
+def prune_delete_game_conds(user_id=None):
+    min_req = get_min_req()
+    conds = [
+        Game.is_complete == False,
+        or_(
+            and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
+            and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
+        ),
+        or_(Game.player_id_1 == None, Game.player_id_2 == None),
+    ]
+    if user_id is not None:
+        conds.append(or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
+
+    return conds
+
+
+def prune_finish_game_conds(user_id=None):
+    min_req = get_min_req()
+    conds = [
+        Game.is_complete == False,
+        Game.player_id_1 != None,
+        Game.player_id_2 != None,
+        or_(
+            and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
+            and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
+        ),
+    ]
+    if user_id is not None:
+        conds.append(or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
+
+    return conds
+
+
 # Prune games in which a player has not requested in a while.
 # - A game in which either last_req time is more than 10 minutes ago is a candidate
 # - If only 1 player has joined, just delete the game
 # - If both players have joined, the AFK one forfeits
 def prune_afk_games(db, user_id=None):
     min_req = get_min_req()
-    stmt = delete(Game).where(
-            Game.is_complete == False,
-            or_(
-                and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
-                and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
-            ),
-            or_(Game.player_id_1 == None, Game.player_id_2 == None),
-        )
-    if user_id is not None:
-        stmt = stmt.where(
-            or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
-    db.exec(stmt)
 
-    stmt = update(Game).where(
-            Game.is_complete == False,
-            and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
-            Game.player_id_1 != None,
-            Game.player_id_2 != None,
-        ).values(
-            is_complete=True,
-            winner_id=Game.player_id_2,
-        )
-    if user_id is not None:
-        stmt = stmt.where(
-            or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
-    db.exec(stmt)
+    db.exec(delete(Game).where(*prune_delete_game_conds(user_id)))
 
-    stmt = update(Game).where(
-            Game.is_complete == False,
-            and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
-            Game.player_id_1 != None,
-            Game.player_id_2 != None,
-        ).values(
-            is_complete=True,
-            winner_id=Game.player_id_1,
-        )
-    if user_id is not None:
-        stmt = stmt.where(
-            or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
+    p1_afk = and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req)
+    p2_afk = and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req)
+    stmt = update(Game).where(*prune_finish_game_conds(user_id)).values(
+        is_complete=True,
+        winner_id=case(
+            (p1_afk, Game.player_id_2),
+            (p2_afk, Game.player_id_1),
+        ),
+    )
     db.exec(stmt)
     db.commit()

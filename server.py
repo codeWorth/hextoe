@@ -1,3 +1,4 @@
+import asyncio
 import random
 from datetime import datetime
 from typing import Union
@@ -5,7 +6,7 @@ import os
 
 from fastapi import Cookie, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, func, or_, update
+from sqlalchemy import and_, func, or_, update, not_
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -36,7 +37,9 @@ from util import (
     get_game_with_unames,
     update_game_last_req,
     prune_afk_games,
-    get_min_req
+    get_min_req,
+    prune_delete_game_conds,
+    prune_finish_game_conds,
 )
 
 
@@ -51,9 +54,17 @@ engine = create_engine(DATABASE_URL)
 app = FastAPI()
 
 
+async def _prune_loop():
+    while True:
+        await asyncio.sleep(120)
+        with Session(engine) as db:
+            prune_afk_games(db)
+
+
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
+    asyncio.get_event_loop().create_task(_prune_loop())
 
 
 def _set_session_cookie(response: Response, session_id: str, session_ttl: datetime):
@@ -171,8 +182,7 @@ def get_user(user_id: str):
         }
 
 
-# Get user games. We prune here because we do not want to present a game which
-# should be deleted to the user.
+# Get user games
 @app.get("/api/user/{user_id}/games", response_model=GameListResponse)
 def get_user_games(user_id: str):
     with Session(engine) as db:
@@ -182,7 +192,6 @@ def get_user_games(user_id: str):
         if user is None or user.is_deleted:
             raise HTTPException(status_code=404)
 
-        prune_afk_games(db, user_id=user_id)
         Player1 = aliased(User)
         Player2 = aliased(User)
 
@@ -205,7 +214,7 @@ def get_user_games(user_id: str):
             )
             .where(
                 (Game.player_id_1 == user_id) | (Game.player_id_2 == user_id),
-            )
+            ).where(not_(and_(*prune_delete_game_conds(user_id=user_id))))
             .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
             .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
             .outerjoin(Move, Move.game_id == Game.game_id)
@@ -266,13 +275,11 @@ def _do_join_game(open_game: Game, user: User, db: Session) -> str:
 
 # Join a game which is looking for a player, or create a public game for
 # others to join. If we already are looking for a game, we just return that
-# game id. We have to prune here because we really don't want to join a game
-# that shouldn't exist.
+# game id
 @app.post("/api/game/join", response_model=str)
 def join_game(session_id: str = Cookie(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
-        prune_afk_games(db)
 
         # Check if user is already in an in-progress game, join the most recent
         # one if so
@@ -281,7 +288,11 @@ def join_game(session_id: str = Cookie(...)):
                 Game.is_complete == False,
                 (Game.player_id_1 == user.user_id) | (Game.player_id_2 == user.user_id),
                 Game.is_public == True,
-            )
+            ).where(not_(and_(
+                *prune_delete_game_conds(),
+            ))).where(not_(and_(
+                *prune_finish_game_conds(),
+            )))
             .order_by(Game.creation_time.desc())
         ).first()
         if existing:
@@ -293,7 +304,11 @@ def join_game(session_id: str = Cookie(...)):
                 Game.is_public == True,
                 Game.is_complete == False,
                 or_(Game.player_id_1 == None, Game.player_id_2 == None),
-            )
+            ).where(not_(and_(
+                *prune_delete_game_conds(),
+            ))).where(not_(and_(
+                *prune_finish_game_conds(),
+            )))
             .order_by(Game.creation_time.asc())
         ).first()
 
@@ -396,7 +411,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
                 # Also update the local copy so we return up to date info
                 game.is_complete = True
                 game.winner_id = user_id
-            else:
+            else if game.player_id_1 == user_id or game.player_id_2 == user_id:
                 update_game_last_req(game_id, user_id, db)
 
         moves = db.exec(
@@ -496,7 +511,6 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
 @app.post("/api/games", response_model=GameListResponse)
 def get_games():
     with Session(engine) as db:
-        prune_afk_games(db)
         Player1 = aliased(User)
         Player2 = aliased(User)
         games = db.exec(
@@ -517,7 +531,7 @@ def get_games():
                 Game.player_id_1 != None,
                 Game.player_id_2 != None,
                 Game.is_public == True
-            )
+            ).where(not_(and_(*prune_delete_game_conds())))
             .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
             .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
             .outerjoin(Move, Move.game_id == Game.game_id)
