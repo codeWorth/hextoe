@@ -1,6 +1,7 @@
 import random
 from datetime import datetime
 from typing import Union
+import os
 
 from fastapi import Cookie, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -8,7 +9,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from db_schemas import Game, Move, User
+from db_schemas import Game, Move, User, UNAME_MAX
 from json_schemas import (
     GameStateResponse,
     MoveBody,
@@ -38,7 +39,7 @@ from util import (
 
 # -- DB setup --
 
-DATABASE_URL = "mysql+pymysql://hextoe@localhost/hextoe"
+DATABASE_URL = os.environ['HEXTOE_DB_URL']
 engine = create_engine(DATABASE_URL)
 
 app = FastAPI()
@@ -120,6 +121,8 @@ def create_user(body: UserInfoBody, response: Response):
     with Session(engine) as db:
         if db.exec(select(User).where(User.username == body.username)).first():
             raise HTTPException(status_code=409)
+        if len(body.username) > UNAME_MAX:
+            raise HTTPException(status_code=400)
         user = User(
             user_id=new_id_str(),
             username=body.username,
@@ -158,7 +161,10 @@ def update_user(body: UpdateUserBody, response: Response, session_id: str = Cook
         if user.is_anon:
             return
         if body.username is not None:
-            user.username = body.username
+            if len(body.username) > UNAME_MAX:
+                raise HTTPException(status_code=400)
+            else:
+                user.username = body.username
         if body.password is not None:
             user.password_hash = hash_password(body.password)
         user.session_id = new_id_str()

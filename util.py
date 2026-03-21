@@ -8,23 +8,23 @@ from sqlmodel import Session, select
 from sqlalchemy import func
 from sqlalchemy.orm import aliased
 
-from db_schemas import Game, Move, User
+from db_schemas import Game, Move, User, ID_LEN
 
 SESSION_TTL_HOURS = 48
 MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
 MOVE_TOO_FAR = "TOO_FAR"
 MAX_MOVE_DIST = 7
 
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+def hash_password(password: str) -> bytes:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
 
-def verify_password(password: str, password_hash: str) -> bool:
-    return bcrypt.checkpw(password.encode(), password_hash.encode())
+def verify_password(password: str, password_hash: bytes) -> bool:
+    return bcrypt.checkpw(password.encode(), password_hash)
 
 
 def new_id_str() -> str:
-    return secrets.token_urlsafe(32)
+    return secrets.token_urlsafe(ID_LEN)
 
 
 def new_session_ttl() -> datetime:

@@ -1,15 +1,18 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import LargeBinary
 from sqlmodel import Field, SQLModel
 
+ID_LEN = 36
+UNAME_MAX = 64
 
 # User always has some session_id, but the TTL may indicate it has expired.
 class User(SQLModel, table=True):
-    user_id: str = Field(primary_key=True)
-    username: str = Field(unique=True)
-    password_hash: str
-    session_id: str = Field(index=True)
+    user_id: str = Field(max_length=ID_LEN, primary_key=True)
+    username: str = Field(max_length=UNAME_MAX, unique=True)
+    password_hash: bytes = Field(sa_column_kwargs={"type_": LargeBinary(60)})
+    session_id: str = Field(max_length=ID_LEN, index=True)
     session_ttl: datetime
     is_deleted: bool = Field(default=False)
     is_anon: bool = Field(default=False)
@@ -19,10 +22,10 @@ class User(SQLModel, table=True):
 # If one of the player_id slots is empty, and the is_public field is true,
 # then this game is waiting for the 2nd player to join.
 class Game(SQLModel, table=True):
-    game_id: str = Field(primary_key=True)
-    player_id_1: Optional[str] = Field(default=None, foreign_key="user.user_id")
-    player_id_2: Optional[str] = Field(default=None, foreign_key="user.user_id")
-    winner_id: Optional[str] = Field(default=None, foreign_key="user.user_id")
+    game_id: str = Field(max_length=ID_LEN, primary_key=True)
+    player_id_1: Optional[str] = Field(max_length=ID_LEN, default=None, foreign_key="user.user_id")
+    player_id_2: Optional[str] = Field(max_length=ID_LEN, default=None, foreign_key="user.user_id")
+    winner_id: Optional[str] = Field(max_length=ID_LEN, default=None, foreign_key="user.user_id")
     is_complete: bool = Field(default=False)
     creation_time: datetime = Field(default_factory=datetime.utcnow)
     move_time: datetime = Field(default_factory=datetime.utcnow)
@@ -30,7 +33,7 @@ class Game(SQLModel, table=True):
 
 
 class Move(SQLModel, table=True):
-    game_id: str = Field(foreign_key="game.game_id", primary_key=True)
+    game_id: str = Field(max_length=ID_LEN, foreign_key="game.game_id", primary_key=True)
     move_index: int = Field(primary_key=True)
     a: bool  # row parity (0 or 1)
     r: int   # row
