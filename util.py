@@ -14,7 +14,7 @@ SESSION_TTL_HOURS = 48
 MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
 MOVE_TOO_FAR = "TOO_FAR"
 MAX_MOVE_DIST = 7
-MAX_GAME_AGE_MINUTES = 10
+MAX_GAME_AGE_MINUTES = 5
 
 def hash_password(password: str) -> bytes:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())

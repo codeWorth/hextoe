@@ -173,17 +173,44 @@ function renderPlayerInfo() {
 }
 
 function renderMoveList() {
-	moveListEl.innerHTML = "";
-	if (!_gameState) return;
-	_gameState.moves.forEach((move, i) => {
-		const el = document.createElement("div");
+	if (!_gameState) {
+        moveListEl.innerHTML = "";
+        return;
+    }
+
+    function populateMoveItem(el, move, i) {
 		el.className = "move-item " + (move.p1 ? "move-p1" : "move-p2");
 		const label = move.p1 ? "X" : "O";
 		el.textContent = (i + 1) + ". " + label + " (" + move.a + ", " + move.r + ", " + move.c + ")";
 		el.onmouseenter = () => { maxMoveId = i; render(); };
+        el.dataset.move_index = i;
+    }
+
+    let lastIndex = -1;
+    let lengthChanged = false;
+    for (let i = moveListEl.children.length-1; i >= 0; i--) {
+        const child = moveListEl.children[i];
+        const moveIndex = child.dataset.move_index;
+        if (moveIndex === undefined) {
+            continue;
+        }
+        lastIndex = moveIndex > lastIndex ? moveIndex : lastIndex;
+        if (moveIndex >= _gameState.moves.length) {
+            moveListEl.removeChild(child);
+            lengthChanged = true;
+            continue;
+        }
+        populateMoveItem(child, _gameState.moves[moveIndex], moveIndex);
+    }
+    for (let i = lastIndex+1; i < _gameState.moves.length; i++) {
+		const el = document.createElement("div");
+        populateMoveItem(el, _gameState.moves[i], i);
 		moveListEl.appendChild(el);
-	});
-	moveListEl.scrollTop = moveListEl.scrollHeight;
+        lengthChanged = true;
+	}
+    if (lengthChanged) {
+	    moveListEl.scrollTop = moveListEl.scrollHeight;
+    }
 	moveListEl.onmouseleave = () => { maxMoveId = -1; render(); };
 }
 
