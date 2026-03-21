@@ -171,6 +171,70 @@ function createGameEntry(game, opts = {}) {
 	return entry;
 }
 
+// -- Win detection --
+
+// moves_tbl: Map with key "a,r,c" -> move index
+// pos: {a, r, c}
+// Returns array of move indices forming the line, or [] if no line of 6.
+
+function _getKey(a, r, c) { return a + "," + r + "," + c; }
+
+function _lineIndices(movesTbl, isP1Tbl, pos, stepFn) {
+	const key = _getKey(pos.a, pos.r, pos.c);
+	const startIdx = movesTbl.get(key);
+	if (startIdx === undefined) return [];
+	const isP1 = isP1Tbl.get(key);
+
+	const indices = [startIdx];
+	let ca = pos.a, cr = pos.r, cc = pos.c;
+	for (let i = 0; i < 5; i++) {
+		const next = stepFn(ca, cr, cc);
+		ca = next.a; cr = next.r; cc = next.c;
+		const k = _getKey(ca, cr, cc);
+		const idx = movesTbl.get(k);
+		if (idx === undefined || isP1Tbl.get(k) !== isP1) return [];
+		indices.push(idx);
+	}
+	return indices;
+}
+
+function _stepR(a, r, c) { return { a, r, c: c + 1 }; }
+
+function _stepDR(a, r, c) {
+	const nr = r + (a & 1);
+	const nc = c + (a & 1);
+	return { a: 1 - a, r: nr, c: nc };
+}
+
+function _stepDL(a, r, c) {
+	const nr = r + (a & 1);
+	const na = 1 - a;
+	const nc = c - (na & 1);
+	return { a: na, r: nr, c: nc };
+}
+
+// Find the indices of the 6 winning moves, or null if no winner.
+// moves: array of {a, r, c, p1}
+function findWinningMoves(moves) {
+	const movesTbl = new Map();
+	const isP1Tbl = new Map();
+	for (let i = 0; i < moves.length; i++) {
+		const m = moves[i];
+		const k = _getKey(m.a, m.r, m.c);
+		movesTbl.set(k, i);
+		isP1Tbl.set(k, m.p1);
+	}
+
+	for (const m of moves) {
+		const pos = { a: m.a, r: m.r, c: m.c };
+		for (const stepFn of [_stepR, _stepDR, _stepDL]) {
+			const indices = _lineIndices(movesTbl, isP1Tbl, pos, stepFn);
+			if (indices.length === 6) return indices;
+		}
+	}
+	return null;
+}
+
 // -- Helpers --
 
 function formatUname(uname, uid, is_started) {

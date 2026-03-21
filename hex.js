@@ -76,7 +76,7 @@ function drawO(ctx, cx, cy, size) {
 // Renders the hex grid and moves onto the given canvas.
 // camX/camY are camera offsets in pixel space.
 // moves is an array of {a, r, c, p1} objects (can be null/empty).
-function renderHexGrid(canvas, ctx, camX, camY, moves) {
+function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves) {
 	const dpr = window.devicePixelRatio || 1;
 	canvas.style.width = "0";
 	canvas.style.height = "0";
@@ -116,14 +116,22 @@ function renderHexGrid(canvas, ctx, camX, camY, moves) {
 
 	if (!moves) return;
 
-	for (const move of moves) {
+	for (let i = 0; i < moves.length; i++) {
+		const move = moves[i];
 		const pos = hexToPixel(move.a, move.r, move.c);
 		const sx = pos.x - camX + w / 2;
 		const sy = pos.y - camY + h / 2;
 		if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
 
+		let isHighlight = false;
+		if (highlightIndex >= 0 && i === highlightIndex) {
+			isHighlight = true;
+		} else if (highlightIndex < 0 && winMoves && winMoves.includes(i)) {
+			isHighlight = true;
+		}
 		const fill = move.p1 ? "#3a2a2a" : "#2a2a3a";
-		drawHex(ctx, sx, sy, HEX_SIZE, fill, move.p1 ? "#6a4a4a" : "#4a4a6a");
+		const stroke = isHighlight ? "#ddd" : (move.p1 ? "#6a4a4a" : "#4a4a6a");
+		drawHex(ctx, sx, sy, HEX_SIZE, fill, stroke);
 		if (move.p1) drawX(ctx, sx, sy, HEX_SIZE);
 		else drawO(ctx, sx, sy, HEX_SIZE);
 	}

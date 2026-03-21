@@ -88,9 +88,15 @@ const gameId = pathParts[pathParts.length - 1];
 let _gameState = null;
 let pollTimer = null;
 let maxMoveId = -1;
+let winningMoves = null;
 
 function setGameState(val) {
 	_gameState = val;
+	if (_gameState && _gameState.winner_id) {
+		winningMoves = findWinningMoves(_gameState.moves);
+	} else {
+		winningMoves = null;
+	}
 	render();
 	renderPlayerInfo();
 	renderMoveList();
@@ -121,7 +127,7 @@ function render() {
 	if (maxMoveId >= 0) {
 		submoves = moves.slice(0, maxMoveId + 1);
 	}
-	renderHexGrid(canvas, ctx, cam.x, cam.y, submoves);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, submoves, maxMoveId, winningMoves);
 }
 
 function renderPlayerInfo() {

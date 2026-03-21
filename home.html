@@ -113,7 +113,7 @@ const cam = setupPanning(canvas, renderCanvas);
 
 function renderCanvas() {
 	const moves = _selectedGameState ? _selectedGameState.moves : null;
-	renderHexGrid(canvas, ctx, cam.x, cam.y, moves);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, -1, null);
 }
 
 async function loadGames() {
