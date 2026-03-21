@@ -411,7 +411,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
                 # Also update the local copy so we return up to date info
                 game.is_complete = True
                 game.winner_id = user_id
-            else if game.player_id_1 == user_id or game.player_id_2 == user_id:
+            elif game.player_id_1 == user_id or game.player_id_2 == user_id:
                 update_game_last_req(game_id, user_id, db)
 
         moves = db.exec(
