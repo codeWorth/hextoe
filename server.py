@@ -141,7 +141,7 @@ def create_anon_user(response: Response):
         user = User(
             user_id=new_id_str(),
             username=new_id_str(),
-            password_hash="",
+            password_hash=b"",
             session_id=new_id_str(),
             session_ttl=new_session_ttl(),
             is_anon=True
