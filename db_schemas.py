@@ -31,6 +31,8 @@ class Game(SQLModel, table=True):
     creation_time: datetime = Field(default_factory=datetime.utcnow)
     move_time: datetime = Field(default_factory=datetime.utcnow)
     is_public: bool = Field(default=True)
+    last_req_p1: Optional[datetime] = Field(default=None)
+    last_req_p2: Optional[datetime] = Field(default=None)
 
 
 class Move(SQLModel, table=True):

@@ -21,6 +21,12 @@
 		.canvas-area {
 			position: relative; aspect-ratio: 4 / 3; height: 100%; max-width: calc(100% - 316px);
 		}
+		.game-overlay {
+			position: absolute; top: 10px; right: 10px;
+			background: rgba(35, 35, 35, 0.85); color: var(--text-muted);
+			padding: 6px 12px; border-radius: 6px; font-size: 13px;
+			pointer-events: none;
+		}
 		.canvas-wrap { width: 100%; height: 100%; overflow: hidden; }
 
 		.game-list { width: 300px; min-width: 240px; }
@@ -38,6 +44,7 @@
 	<div class="viewer">
 		<div class="canvas-area">
 			<div class="canvas-wrap"><canvas id="canvas"></canvas></div>
+			<div class="game-overlay" id="game-overlay"></div>
 			<button class="recenter-btn" onclick="cam.reset();" title="Re-center">&#x2316;</button>
 		</div>
 		<div class="game-list">
@@ -114,6 +121,15 @@ const cam = setupPanning(canvas, renderCanvas);
 function renderCanvas() {
 	const moves = _selectedGameState ? _selectedGameState.moves : null;
 	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, -1, null);
+	const overlay = document.getElementById("game-overlay");
+	if (_selectedGameState) {
+		const p1 = _selectedGameState.p1_uname || "...";
+		const p2 = _selectedGameState.p2_uname || "...";
+		overlay.textContent = p1 + " v. " + p2;
+		overlay.style.display = "";
+	} else {
+		overlay.style.display = "none";
+	}
 }
 
 async function loadGames() {

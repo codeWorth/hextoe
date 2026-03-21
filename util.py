@@ -5,7 +5,7 @@ from typing import Optional
 import bcrypt
 from fastapi import HTTPException
 from sqlmodel import Session, select
-from sqlalchemy import func
+from sqlalchemy import case, func, update, delete, and_, or_
 from sqlalchemy.orm import aliased
 
 from db_schemas import Game, Move, User, ID_LEN_BYTES
@@ -14,6 +14,7 @@ SESSION_TTL_HOURS = 48
 MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
 MOVE_TOO_FAR = "TOO_FAR"
 MAX_MOVE_DIST = 7
+MAX_GAME_AGE_MINUTES = 10
 
 def hash_password(password: str) -> bytes:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
@@ -249,3 +250,78 @@ def get_game_with_unames(game_id, db):
         .outerjoin(Player1, Game.player_id_1 == Player1.user_id)
         .outerjoin(Player2, Game.player_id_2 == Player2.user_id)
     ).first()
+
+
+# Update last request time
+def update_game_last_req(game_id, pid, db):
+    now = datetime.utcnow()
+    db.exec(
+        update(Game)
+        .where(Game.user_id == game_id)
+        .values(
+            last_req_p1=case(
+                (Game.player_id_1 == pid, now),
+                else_=Game.last_req_p1
+            ),
+            last_req_p2=case(
+                (Game.player_id_2 == pid, now),
+                else_=Game.last_req_p2
+            )
+        )
+    )
+
+
+# Afk time
+def get_min_req():
+    return datetime.utcnow() - timedelta(minutes=MAX_GAME_AGE_MINUTES)
+
+# Prune games in which a player has not requested in a while.
+# - A game in which either last_req time is more than 10 minutes ago is a candidate
+# - If only 1 player has joined, just delete the game
+# - If both players have joined, the AFK one forfeits
+def prune_afk_games(db, user_id=None, n_recent=None):
+    min_req = get_min_req()
+    stmt = delete(Game).where(
+            or_(
+                and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
+                and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
+            ),
+            or_(Game.player_id_1 == None, Game.player_id_2 == None),
+        )
+    if user is not None:
+        stmt = stmt.where(
+            or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
+    if n_recent is not None:
+        stmt = stmt.order_by(Game.move_time.desc()).limit(n_recent)
+    db.exec(stmt)
+
+    stmt = update(Game).where(
+            and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
+            Game.player_id_1 != None,
+            Game.player_id_2 != None,
+        ).values(
+            is_complete=True,
+            winner_id=Game.player_id_2,
+        )
+    if user is not None:
+        stmt = stmt.where(
+            or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
+    if n_recent is not None:
+        stmt = stmt.order_by(Game.move_time.desc()).limit(n_recent)
+    db.exec(stmt)
+
+    stmt = update(Game).where(
+            and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),
+            Game.player_id_1 != None,
+            Game.player_id_2 != None,
+        ).values(
+            is_complete=True,
+            winner_id=Game.player_id_1,
+        )
+    if user is not None:
+        stmt = stmt.where(
+            or_(Game.player_id_1 == user_id, Game.player_id_2 == user_id))
+    if n_recent is not None:
+        stmt = stmt.order_by(Game.move_time.desc()).limit(n_recent)
+    db.exec(stmt)
+    db.commit()

@@ -5,7 +5,7 @@ import os
 
 from fastapi import Cookie, FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, update
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -33,7 +33,10 @@ from util import (
     require_valid_session,
     validate_move,
     winner_index,
-    get_game_with_unames
+    get_game_with_unames,
+    update_game_last_req,
+    prune_afk_games,
+    get_min_req
 )
 
 
@@ -215,7 +218,8 @@ def get_user(user_id: str):
         }
 
 
-# Get user games
+# Get user games. We prune here because we do not want to present a game which
+# should be deleted to the user.
 @app.get("/api/user/{user_id}/games", response_model=GameListResponse)
 def get_user_games(user_id: str):
     with Session(engine) as db:
@@ -225,6 +229,7 @@ def get_user_games(user_id: str):
         if user is None or user.is_deleted:
             raise HTTPException(status_code=404)
 
+        prune_afk_games(db, user_id=user_id)
         Player1 = aliased(User)
         Player2 = aliased(User)
 
@@ -308,11 +313,13 @@ def _do_join_game(open_game: Game, user: User, db: Session) -> str:
 
 # Join a game which is looking for a player, or create a public game for
 # others to join. If we already are looking for a game, we just return that
-# game id.
+# game id. We have to prune here because we really don't want to join a game
+# that shouldn't exist.
 @app.post("/api/game/join", response_model=str)
 def join_game(session_id: str = Cookie(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
+        prune_afk_games(db)
 
         # Check if user is already in an in-progress game, join the most recent
         # one if so
@@ -401,7 +408,8 @@ def create_private_game(session_id: str = Cookie(...)):
         return game.game_id
 
 
-# Get game state
+# Get game state. If this user is in this game, and the opponent is AFK, we forfeit
+# them before returning the game info.
 @app.get("/api/game/{game_id}", response_model=GameStateResponse)
 def get_game(game_id: str, session_id: str = Cookie(None)):
     with Session(engine) as db:
@@ -414,13 +422,36 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
         if game is None:
             raise HTTPException(status_code=404)
 
+        if user is not None:
+            if game.player_id_1 == user_id:
+                other_last_req = game.last_req_p2
+            elif game.player_id_2 == user_id:
+                other_last_req = game.last_req_p1
+
+            min_req = get_min_req()
+            if other_last_req is not None and other_last_req < min_req:
+                db.exec(
+                    update(Game).
+                    where(Game.game_id == game_id)
+                    .values(
+                        is_complete = True,
+                        winner_id = user_id,
+                    )
+                )
+                db.commit()
+                # Also update the local copy so we return up to date info
+                game.is_complete = True
+                game.winner_id = user_id
+            else:
+                update_game_last_req(game_id, user_id, db)
+
         moves = db.exec(
             select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
         ).all()
         return build_game_state(game, moves, user_id)
 
 
-# Submit a move
+# Submit a move. Update this player's last req time
 @app.post("/api/game/{game_id}", response_model=Union[GameStateResponse, MoveFailureResponse])
 def make_move(game_id: str, body: MoveBody, session_id: str = Cookie(...)):
     with Session(engine) as db:
@@ -463,7 +494,14 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Cookie(...)):
             game.winner_id = game.player_id_2
             game.is_complete = True
 
+        # Ideally we'd call the same update_game_last_req function, but the
+        # opportunity here to batch the updates together seems worth taking
         game.move_time = datetime.utcnow()
+        if user.user_id == game.player_id_1:
+            game.last_req_p1 = datetime.utcnow()
+        elif user.user_id == game.player_id_2:
+            game.last_req_p2 = datetime.utcnow()
+
         db.add(game)
         db.commit()
 
@@ -471,7 +509,7 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Cookie(...)):
         return build_game_state(game, moves, user.user_id)
 
 
-# Undo the most recent move
+# Undo the most recent move. Update this player's last req time
 @app.post("/api/game/undo/{game_id}", response_model=GameStateResponse)
 def undo_move(game_id: str, session_id: str = Cookie(...)):
     with Session(engine) as db:
@@ -494,6 +532,7 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
 
         db.delete(moves[-1])
         db.commit()
+        update_game_last_req(game_id, user.user_id, db)
         return build_game_state(game, moves[:-1], user.user_id)
 
 
@@ -503,6 +542,8 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
 @app.post("/api/games", response_model=GameListResponse)
 def get_games():
     with Session(engine) as db:
+        # Let's check the last 75 games just in case we're gonna prune a lot of them
+        prune_afk_games(db, n_recent=75)
         Player1 = aliased(User)
         Player2 = aliased(User)
         games = db.exec(
