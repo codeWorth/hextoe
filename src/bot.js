@@ -43,6 +43,9 @@ function scoreLine(movesTbl, pos, stepFn, negStepFn) {
 		// If we've reached the end of the line, and there's nothing blocking it,
 		// then we can return the score (doubled if not terminated on the prev side)
 		if (nextEntry === undefined) {
+			// We want to make high scores much more desirable. Otherwise, points of interest,
+			// a.k.a. locations with many nearby tiles, get overrepresented.
+			score = score * score * score;
 			if (terminated) {
 				// A good candidate move is at the end of this line
 				return {score: score * negateScore,
@@ -56,6 +59,7 @@ function scoreLine(movesTbl, pos, stepFn, negStepFn) {
 		// If we find an opponent tile, we've ended here. We may have 0 score,
 		// or normal score if the other side is not terminated.
 		if (nextEntry.isP1 != isP1) {
+			score = score * score * score;
 			if (terminated) {
 				return {score: 0, moves: []};
 			} else {
@@ -68,7 +72,7 @@ function scoreLine(movesTbl, pos, stepFn, negStepFn) {
 	
 	// We never hit an opponent or a blank spot. So that means we have 6 in a row,
 	// which is winning outright. Return P1_WON or P2_WON to represent that.
-	return isP1 ? P1_WON : P2_WON;
+	return isP1 ? {score: P1_WON} : {score: P2_WON};
 }
 
 // Iterate over every move in the current board state. For each move, check all the
@@ -95,9 +99,6 @@ function evaluateBoard(movesTbl) {
 			if (subscore.score == 0) {
 				continue;
 			}
-			// We want to make high scores much more desirable. Otherwise, points of interest,
-			// a.k.a. locations with many nearby tiles, get overrepresented.
-			subscore.score = subscore.score * subscore.score * subscore.score;
 			totalScore += subscore.score;
 			// Go over every candidate move that was returned, and put them into the candidate table.
 			// Either add the score to existing, or set it if it doesn't already exist.
