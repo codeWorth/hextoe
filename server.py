@@ -2,8 +2,9 @@ import asyncio
 import random
 from datetime import datetime
 from types import SimpleNamespace
-from typing import Union
+from typing import Union, Optional
 import os
+
 
 from fastapi import Cookie, FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
