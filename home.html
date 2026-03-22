@@ -122,7 +122,7 @@ const cam = setupPanning(canvas, renderCanvas);
 
 function renderCanvas() {
 	const moves = _selectedGameState ? _selectedGameState.moves : null;
-	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, -1, null);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, -1, null, null);
 	const overlay = document.getElementById("game-overlay");
 	if (_selectedGameState) {
 		const p1 = _selectedGameState.p1_uname || "...";

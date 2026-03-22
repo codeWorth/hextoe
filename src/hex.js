@@ -73,10 +73,14 @@ function drawO(ctx, cx, cy, size) {
 	ctx.stroke();
 }
 
+function outOfBounds(sx, sy, w, h) {
+	return (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H);
+}
+
 // Renders the hex grid and moves onto the given canvas.
 // camX/camY are camera offsets in pixel space.
 // moves is an array of {a, r, c, p1} objects (can be null/empty).
-function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves) {
+function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves, bestMove) {
 	let submoves = moves;
 	if (highlightIndex >= 0) {
 		submoves = moves.slice(0, highlightIndex + 1);
@@ -113,8 +117,19 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves)
 			const pos = hexToPixel(a, r, c);
 			const sx = pos.x - camX + w / 2;
 			const sy = pos.y - camY + h / 2;
-			if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
+			if (outOfBounds(sx, sy, w, h)) continue;
 			drawHex(ctx, sx, sy, HEX_SIZE, "#2a2a2a", "#3a3a3a");
+		}
+	}
+
+	if (bestMove) {
+		const move = _getARCFromKey(bestMove);
+		const pos = hexToPixel(move.a, move.r, move.c);
+		const sx = pos.x - camX + w / 2;
+		const sy = pos.y - camY + h / 2;
+		if (!outOfBounds(sx, s, w, h)) {
+			stroke = "#ddd";
+			drawHex(ctx, sx, sy, HEX_SIZE, null, stroke);
 		}
 	}
 
@@ -125,7 +140,7 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves)
 		const pos = hexToPixel(move.a, move.r, move.c);
 		const sx = pos.x - camX + w / 2;
 		const sy = pos.y - camY + h / 2;
-		if (sx < -HEX_W || sx > w + HEX_W || sy < -HEX_H || sy > h + HEX_H) continue;
+		if (outOfBounds(sx, sy, w, h)) continue;
 
 		let fill = move.p1 ? "#3a2a2a" : "#2a2a3a";
 		if ((highlightIndex < 0 || highlightIndex == moves.length-1) && winMoves && winMoves.includes(i)) {

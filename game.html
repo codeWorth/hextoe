@@ -92,10 +92,13 @@ let _gameState = null;
 let pollTimer = null;
 let maxMoveId = -1;
 let winningMoves = null;
+let bestMove = null;
 
 function setGameState(val) {
+    if (_gameState === null || _gameState.moves.length != val.moves.length) {
+        bestMove = evaluateAhead(movesToTbl(val.moves), 0);
+    }
 	_gameState = val;
-    bestMove = evaluateAhead(movesToTbl(_gameState.moves), 0);
 	if (_gameState && _gameState.winner_id) {
 		winningMoves = findWinningMoves(_gameState.moves);
 	} else {
@@ -127,7 +130,7 @@ const cam = setupPanning(canvas, render, handleClick);
 
 function render() {
 	const moves = _gameState ? _gameState.moves : null;
-	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves, bestMove);
 }
 
 function renderPlayerInfo() {
