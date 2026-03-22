@@ -4,17 +4,17 @@ import os
 _dir = os.path.dirname(os.path.abspath(__file__))
 _lib = ctypes.cdll.LoadLibrary(os.path.join(_dir, "libbot.so"))
 
-_lib.evaluateAhead.argtypes = [
+_lib.evaluate_ahead.argtypes = [
     ctypes.POINTER(ctypes.c_int),  # as
     ctypes.POINTER(ctypes.c_int),  # rs
     ctypes.POINTER(ctypes.c_int),  # cs
-    ctypes.POINTER(ctypes.c_int),  # isP1s
-    ctypes.c_int,                  # numMoves
-    ctypes.POINTER(ctypes.c_int),  # bestA
-    ctypes.POINTER(ctypes.c_int),  # bestR
-    ctypes.POINTER(ctypes.c_int),  # bestC
+    ctypes.POINTER(ctypes.c_int),  # is_p1s
+    ctypes.c_int,                  # num_moves
+    ctypes.POINTER(ctypes.c_int),  # best_a
+    ctypes.POINTER(ctypes.c_int),  # best_r
+    ctypes.POINTER(ctypes.c_int),  # best_c
 ]
-_lib.evaluateAhead.restype = ctypes.c_bool
+_lib.evaluate_ahead.restype = ctypes.c_bool
 
 
 def evaluate_ahead(moves):
@@ -34,7 +34,7 @@ def evaluate_ahead(moves):
     best_r = ctypes.c_int()
     best_c = ctypes.c_int()
 
-    ok = _lib.evaluateAhead(a_arr, r_arr, c_arr, p1_arr, n,
+    ok = _lib.evaluate_ahead(a_arr, r_arr, c_arr, p1_arr, n,
                             ctypes.byref(best_a),
                             ctypes.byref(best_r),
                             ctypes.byref(best_c))

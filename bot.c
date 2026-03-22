@@ -1,0 +1,507 @@
+#include <stdbool.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <assert.h>
+#include <stdlib.h>
+
+#ifdef DEBUG
+#include <stdio.h>
+#endif
+
+/*
+ * FNV hash magic constants
+ */
+
+#define FNV_INIT 	((uint64_t) 0xcbf29ce484222325ULL)
+#define FNV_PRIME	((uint64_t) 0x100000001b3ULL)
+
+#define MM_BUCKETS	512
+#define MM_MASK		(MM_BUCKETS - 1)
+#define MM_STACK_SIZE	2048
+#define MME_INDEX(key)	(fnv_hash(key) & MM_MASK)
+
+#define MASK_31		0x7FFFFFFFULL
+#define P1_WON		262144
+#define P2_WON		-262144
+#define MAX_EVAL_DEPTH	6
+
+typedef struct mm_entry {
+	struct mm_entry	*mme_next;
+	uint64_t	mme_key;
+	int		mme_value;
+} mm_entry_t;
+
+typedef struct move_map {
+	mm_entry_t	mm_buckets[MM_BUCKETS];
+	mm_entry_t	mm_stack[MM_STACK_SIZE];
+	uint32_t	mm_stack_size;
+} move_map_t;
+
+typedef struct arc {
+	bool	a;
+	int	r;
+	int	c;
+} arc_t;
+
+uint64_t
+fnv_hash(uint64_t key)
+{
+	int		i = 0;
+	uint64_t	hval = FNV_INIT;
+
+	while(i < 8) {
+		hval ^= key & 0xFF;
+		hval *= FNV_PRIME;
+		key >>= 8;
+	}
+	return hval;
+}
+
+uint64_t
+mm_make_key(arc_t *arc)
+{
+	uint64_t	key = 0;
+
+	key |= arc->a & 1;
+	key <<= 31;
+	key |= arc->r & MASK_31;
+	key <<= 31;
+	key |= arc->c & MASK_31;
+	key <<= 1;
+	return key;
+}
+
+void
+pos_from_mm_key(uint64_t key, arc_t *arc)
+{
+	// Sign extend the first 31 bits
+	arc->c = (((int) (key & MASK_31)) << 1) >> 1;
+	key >>= 31;
+	arc->r = (((int) (key & MASK_31)) << 1) >> 1;
+	key >>= 31;
+	arc->a = key & 1;
+}
+
+void
+mm_init(move_map_t *mm)
+{
+	int	i;
+
+	for(i = 0; i < MM_BUCKETS; i++) {
+		mm->mm_buckets[i].mme_next = NULL;
+	}
+	mm->mm_stack_size = 0;
+}
+
+void
+mm_insert(move_map_t *mm, uint64_t key, int value)
+{
+	uint32_t	index;
+	mm_entry_t	*head, *entry;
+
+	// Get bucket index
+	index = MME_INDEX(key);
+
+	// Get new entry from stack, increase stack size
+	entry = &mm->mm_stack[mm->mm_stack_size];
+	mm->mm_stack_size++;
+
+	// Populate entry
+	entry->mme_key = key;
+	entry->mme_value = value;
+
+	// Insert entry at start of bucket list, past head node
+	head = &mm->mm_buckets[index];
+	entry->mme_next = head->mme_next;
+	head->mme_next = entry;
+}
+
+mm_entry_t *
+mm_get(move_map_t *mm, uint64_t key)
+{
+	uint32_t	index;
+	mm_entry_t	*node;
+
+	// Make hash/value pair, get bucket index
+	index = MME_INDEX(key);
+
+	// Iterate over list in bucket
+	node = mm->mm_buckets[index].mme_next;
+	while(node != NULL) {
+		if(key == node->mme_key) {
+			return node;
+		}
+		node = node->mme_next;
+	}
+	return NULL;
+}
+
+void
+mm_remove(move_map_t *mm, uint64_t key)
+{
+	uint32_t	index;
+	mm_entry_t	*node, *next, *head;
+
+	// Get bucket index
+	index = MME_INDEX(key);
+
+	// Iterate over list in bucket
+	head = &mm->mm_buckets[index];
+	node = head->mme_next;
+	while(node != NULL) {
+		if(key == node->mme_key) {
+			// Remove this element. It needs to be the top item
+			// of the stack. In my use case, I always insert and
+			// remove in this order (LIFO).
+			assert(node == &mm->mm_stack[mm->mm_stack_size - 1]);
+			mm->mm_stack_size--;
+			head->mme_next = node->mme_next;
+			node->mme_next = NULL;
+			return;
+		}
+		node = node->mme_next;
+	}
+	// We always expect to find the node we intend to remove.
+	assert(false);
+}
+
+bool
+is_p1_for_turn(int num_moves)
+{
+
+	if(num_moves == 0) {
+		return true;
+	}
+	if(((num_moves - 1) / 2) % 2 == 0) {
+		return false;
+	}
+	return true;
+}
+
+void
+step_l(arc_t *arc, arc_t *darc)
+{
+	darc->a = arc->a;
+	darc->r = arc->r;
+	darc->c = arc->c - 1;
+}
+
+void
+step_r(arc_t *arc, arc_t *darc)
+{
+	darc->a = arc->a;
+	darc->r = arc->r;
+	darc->c = arc->c + 1;
+}
+
+void
+step_dl(arc_t *arc, arc_t *darc)
+{
+	darc->a = !arc->a;
+	darc->r = arc->r + (arc->a & 1);
+	darc->c = arc->c - (darc->a & 1);
+}
+
+void
+step_dr(arc_t *arc, arc_t *darc)
+{
+	darc->a = !arc->a;
+	darc->r = arc->r + (arc->a & 1);
+	darc->c = arc->c + (arc->a & 1);
+}
+
+void
+step_ul(arc_t *arc, arc_t *darc)
+{
+	darc->a = !arc->a;
+	darc->r = arc->r - (darc->a & 1);
+	darc->c = arc->c - (darc->a & 1);
+}
+
+void
+step_ur(arc_t *arc, arc_t *darc)
+{
+	darc->a = !arc->a;
+	darc->r = arc->r - (darc->a & 1);
+	darc->c = arc->c + (darc->a & 1);
+}
+
+int
+score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
+	   uint64_t *move1, uint64_t *move2, void (*step)(arc_t *, arc_t *),
+	   void (*step_rev)(arc_t *, arc_t *))
+{
+	int		i, negate_score, l_score;
+	bool		is_p1, terminated;
+	arc_t		cur_arc, prev_arc, next_arc;
+	uint64_t	prev_key, next_key;
+	mm_entry_t	*prev_entry, *next_entry;
+
+	is_p1 = entry->mme_value;
+	step_rev(arc, &prev_arc);
+	prev_key = mm_make_key(&prev_arc);
+	prev_entry = mm_get(mm, prev_key);
+	// If the previous entry is the same as the current one, we just return 0.
+	// We only evaluate the end of a line, because we don't want to double count
+	// scores.
+	if(prev_entry != NULL && prev_entry->mme_value == is_p1) {
+		*score = 0;
+		return 0;
+	}
+	// If this line is terminated on the prev side, we will single count the score.
+	// If it's unterminated on the prev side, we'll double count it, because we have two
+	// opportunities to use this line.
+	terminated = prev_entry != NULL;
+	// If we are p1, the score must be positive. If we are p1, the score must be
+	// negative.
+	negate_score = is_p1 ? 1 : -1;
+	cur_arc.a = arc->a;
+	cur_arc.r = arc->r;
+	cur_arc.c = arc->c;
+	for(i = 0; i < 5; i++) {
+		l_score = i+1;
+		step(&cur_arc, &next_arc);
+		next_key = mm_make_key(&next_arc);
+		next_entry = mm_get(mm, next_key);
+		// If we've reached the end of the line, and there's nothing blocking it,
+		// then we can return the score (doubled if not terminated on the prev side)
+		if(next_entry == NULL) {
+			// We want to make high scores much more desirable. Otherwise, points of interest,
+			// a.k.a. locations with many nearby tiles, get overrepresented.
+			l_score = l_score * l_score * l_score;
+			if(terminated) {
+				// A good candidate move is at the end of this line
+				*score = l_score * negate_score;
+				*move1 = next_key;
+				return 1;
+			} else {
+				// At the end of both lines is good if possible
+				*score = l_score * negate_score * 2;
+				*move1 = prev_key;
+				*move2 = next_key;
+				return 2;
+			}
+		}
+		// If we find an opponent tile, we've ended here. We may have 0 score,
+		// or normal score if the other side is not terminated.
+		if(next_entry->mme_value != is_p1) {
+			l_score = l_score * l_score * l_score;
+			if(terminated) {
+				*score = 0;
+				return 0;
+			} else {
+				*score = l_score * negate_score;
+				*move1 = prev_key;
+				return 1;
+			}
+		}
+		cur_arc.a = next_arc.a;
+		cur_arc.r = next_arc.r;
+		cur_arc.c = next_arc.c;
+	}
+	// We never hit an opponent or a blank spot. So that means we have 6 in a row,
+	// which is winning outright. Return P1_WON or P2_WON to represent that.
+	*score = is_p1 ? P1_WON : P2_WON;
+	return 0;
+}
+
+void
+populate_move_map(move_map_t *mm, int* as, int* rs, int* cs, int* is_p1s,
+		  int num_moves)
+{
+	int		i;
+	arc_t		arc;
+	uint64_t	key;
+
+	for(i = 0; i < num_moves; i++) {
+		arc.a = as[i];
+		arc.r = rs[i];
+		arc.c = cs[i];
+		key = mm_make_key(&arc);
+		mm_insert(mm, key, is_p1s[i]);
+	}
+}
+
+// Iterate over every move in the current board state. For each move, check all the
+// directions to see if it's part of a line (we check right, down right, down left,
+// since we don't need to check the opposite directions).
+// Each move will give us a score and some candidate moves, or undefined.
+// If we get undefined, it means that move is connected to a winning row.
+// If we get score = 0, then it's a no-op.
+// Otherwise, we put the move into the candidates table, adding the score if the
+// move is already in the table. We also add up the total score for every move.
+// Do not rely on the move index in the movesTbl value; it may not be set.
+int
+evaluate_board(move_map_t *mm, move_map_t *candidate_moves)
+{
+	int 		r, c, i, score, mcount, total_score = 0;
+	bool		a;
+	arc_t		arc;
+	uint64_t	move1, move2;
+	mm_entry_t	*entry, *cm_entry;
+
+	// Clear this map
+	mm_init(candidate_moves);
+
+	for(i = 0; i < mm->mm_stack_size; i++) {
+		entry = &mm->mm_stack[i];
+		pos_from_mm_key(entry->mme_key, &arc);
+		mcount = score_line(mm, entry, &arc, &score, &move1, &move2,
+				    step_r, step_l);
+		// If we got a winner, just return that.
+		if(score == P1_WON || score == P2_WON) {
+			return score;
+		}
+		// If this move got scored 0, we don't care about it at all.
+		if(score == 0) {
+			continue;
+		}
+		total_score += score;
+		// Make score always positive
+		if(score < 0) {
+			score = -score;
+		}
+		// Insert/update at move1
+		if(mcount == 1) {
+			cm_entry = mm_get(candidate_moves, move1);
+			if(cm_entry == NULL) {
+				mm_insert(candidate_moves, move1, score);
+			} else {
+				cm_entry->mme_value += score;
+			}
+		}
+		// Insert/update at move2
+		if(mcount == 2) {
+			cm_entry = mm_get(candidate_moves, move2);
+			if(cm_entry == NULL) {
+				mm_insert(candidate_moves, move2, score);
+			} else {
+				cm_entry->mme_value += score;
+			}
+		}
+	}
+	return total_score;
+}
+
+int
+comp_candidates(const void *a, const void *b)
+{
+	return (((mm_entry_t *)b)->mme_value - ((mm_entry_t *)a)->mme_value);
+}
+
+int
+look_moves_at_depth(int depth)
+{
+	if(depth < 4) {
+		return 11 - depth*2;
+	}
+	return 3;
+}
+
+// This function chooses the best move for the current player, based on the moves
+// passed in. Do not rely on the move index in the movesTbl value; it may not be set.
+// movesTbl is shared between calls to this function, it must
+// be returned to its original state when this function exits.
+int
+do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
+		  uint64_t *best_move)
+{
+	bool		i, is_p1, look_moves, sub_eval;
+	int		current_eval, best_score;
+	uint64_t	current_move;
+
+	is_p1 = is_p1_for_turn(mm->mm_stack_size);
+	current_eval = evaluate_board(mm, candidate_moves);
+	if(current_eval == P1_WON || current_eval == P2_WON) {
+		// If we need to return the best move, but the game is over,
+		// so return -1 to indicate as such. -1 is a valid score, but
+		// the top level caller expects the return value to be an error
+		// code, not a score.
+		if(depth == 0) {
+			return -1;
+		} else {
+			return current_eval;
+		}
+	}
+	// If this is our max depth, just return the current eval without finding anything more accurate.
+	if(depth >= MAX_EVAL_DEPTH) {
+		return current_eval;
+	}
+	// Now we need to go through the moves and evaluate them in order. The moves
+	// are labeled with a score of how impactful they are. We simply go through them
+	// in order of impact, and see which gives us the best evaluation.
+	qsort(candidate_moves->mm_stack, candidate_moves->mm_stack_size,
+	      sizeof(mm_entry_t), comp_candidates);
+	look_moves = look_moves_at_depth(depth);
+	if(look_moves > candidate_moves->mm_stack_size) {
+		look_moves = candidate_moves->mm_stack_size;
+	}
+	for(i = 0; i < look_moves; i++) {
+		current_move = candidate_moves->mm_stack[i].mme_key;
+		mm_insert(mm, current_move, is_p1);
+		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
+					     best_move);
+		mm_remove(mm, current_move);
+		// If this is the first try, or this move is better for us than the previous
+		// best, update the best move.
+		if(i == 0 || (is_p1 && sub_eval > best_score) ||
+		   (!is_p1 && sub_eval < best_score)) {
+			best_score = sub_eval;
+			*best_move = current_move;
+		}
+		// If the current player wins with this move, stop looking for other moves.
+		if((is_p1 && best_score == P1_WON) ||
+		   (!is_p1 && best_score == P2_WON)) {
+			break;
+		}
+	}
+	return depth == 0 ? 0 : best_score;
+}
+
+bool
+evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
+	       int* best_a, int* best_r, int* best_c)
+{
+	int		err;
+	arc_t		best_move_pos;
+	uint64_t	best_move;
+	move_map_t	mm;
+	move_map_t	candidate_moves;
+
+	mm_init(&mm);
+	populate_move_map(&mm, as, rs, cs, is_p1s, num_moves);
+	err = do_evaluate_ahead(&mm, &candidate_moves, 0, &best_move);
+	if(err == 0) {
+		pos_from_mm_key(best_move, &best_move_pos);
+		*best_a = best_move_pos.a;
+		*best_r = best_move_pos.r;
+		*best_c = best_move_pos.c;
+		return true;
+	} else {
+		return false;
+	}
+}
+
+#ifdef DEBUG
+int
+main(int argc, char const *argv[])
+{
+	bool 	found_move;
+	int	best_a, best_r, best_c;
+	int 	as[27] = {0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0,
+			  1, 1, 1, 1, 1, 1, 1};
+	int 	rs[27] = {-1, -1, -1, 0, -1, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 0, 0,
+			  0, 1, -2, 1, 1, 1, 0, -1, 0, 1};
+	int 	cs[27] = {-2, -3, -4, -1, -5, -4, -3, -3, -2, -1, -2, -3, -2, -4,
+			  -4, 0, -5, -5, -5, -3, -6, -3, -4, 0, -1, 1, -3};
+	int 	is_p1s[27] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
+			      0, 1, 1, 0, 0, 1, 1, 0, 0};
+
+	found_move = evaluate_ahead(as, rs, cs, is_p1s, 27, &best_a, &best_r,
+				    &best_c);
+	if(found_move) {
+
+	}
+	return 0;
+}
+#endif
