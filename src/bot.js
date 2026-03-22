@@ -70,8 +70,8 @@ function scoreLine(movesTbl, pos, stepFn, negStepFn) {
 	}
 	
 	// We never hit an opponent or a blank spot. So that means we have 6 in a row,
-	// which is winning outright. Return undefined to represent that.
-	return undefined;
+	// which is winning outright. Return P1_WON or P2_WON to represent that.
+	return isP1 ? P1_WON : P2_WON;
 }
 
 // Iterate over every move in the current board state. For each move, check all the
@@ -90,9 +90,9 @@ function evaluateBoard(movesTbl) {
 		const pos = _getARCFromKey(mk);
 		for (const stepFns of STEP_FN_PAIRS) {
 			let subscore = scoreLine(movesTbl, pos, stepFns[0], stepFns[1]);
-			// If we got undefined, the owner of this move won.
-			if (subscore == undefined) {
-				return isP1 ? {totalScore: P1_WON} : {totalScore: P2_WON};
+			// If we got a winner, just return that.
+			if (subscore == P1_WON || subscore == P2_WON) {
+				return {totalScore: subscore};
 			}
 			// If this move got scored 0, we don't care about it at all.
 			if (subscore.score == 0) {
