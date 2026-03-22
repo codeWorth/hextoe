@@ -161,7 +161,9 @@ function evaluateAhead(movesTbl, depth) {
 		return scB - scA;
 	});
 	let lookMoves = lookMovesAtDepth(depth);
-	lookMoves = lookMoves > sortedCandidates.length ? sortedCandidates : lookMoves;
+	if (lookMoves > sortedCandidates.length) {
+		lookMoves = sortedCandidates.length;
+	}
 	let bestEval = undefined;
 	let bestMoveKey = undefined;
 	for (let i = 0; i < lookMoves; i++) {
