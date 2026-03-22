@@ -54,7 +54,7 @@ class Move(SQLModel, table=True):
 
 class ChatMessage(SQLModel, table=True):
     game_id: str = Field(max_length=ID_LEN, foreign_key="game.game_id", primary_key=True)
-    chat_id: int = Field(primary_key=True, autoincrement=True)
+    chat_id: int = Field(primary_key=True)
     message: str = Field(max_length=CHATMESSAGE_MAX)
     sender_id: str = Field(max_length=ID_LEN, foreign_key="user.user_id")
     sent_time: datetime = Field(default_factory=datetime.utcnow)
