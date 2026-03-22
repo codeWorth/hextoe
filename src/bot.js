@@ -8,10 +8,10 @@ function lookMovesAtDepth(depth) {
 	if (depth > MAX_EVAL_DEPTH) {
 		return 1;
 	}
-	if (depth < 4) {
-		return 11 - depth*2;
+	if (depth < 3) {
+		return 5 - depth;
 	}
-	return 3;
+	return 2;
 }
 
 // Do not rely on the move index in the movesTbl value; it may not be set.
