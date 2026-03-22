@@ -77,7 +77,6 @@
 
 <script src="/src/hex.js"></script>
 <script src="/src/util.js"></script>
-<script src="/src/bot.js"></script>
 <script>
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
@@ -92,16 +91,8 @@ let _gameState = null;
 let pollTimer = null;
 let maxMoveId = -1;
 let winningMoves = null;
-let bestMove = null;
 
 function setGameState(val) {
-    if (_gameState === null || _gameState.moves.length != val.moves.length &&
-        val.moves.length > 1
-    ) {
-        console.time("GetBestMove");
-        bestMove = evaluateAhead(movesToTbl(val.moves), 0);
-        console.timeEnd("GetBestMove");
-    }
 	_gameState = val;
 	if (_gameState && _gameState.winner_id) {
 		winningMoves = findWinningMoves(_gameState.moves);
@@ -134,7 +125,7 @@ const cam = setupPanning(canvas, render, handleClick);
 
 function render() {
 	const moves = _gameState ? _gameState.moves : null;
-	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves, bestMove);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves, null);
 }
 
 function renderPlayerInfo() {
