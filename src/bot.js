@@ -5,10 +5,10 @@ const MAX_EVAL_DEPTH = 5;
 
 // At earlier depths, consider many moves. At later depths, consider fewer.
 function lookMovesAtDepth(depth) {
-	if (depth < 3) {
-		return 5 - depth;
+	if (depth < 4) {
+		return 11 - depth*2;
 	}
-	return 2;
+	return 3;
 }
 
 // Do not rely on the move index in the movesTbl value; it may not be set.
