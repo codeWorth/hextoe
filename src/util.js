@@ -231,21 +231,22 @@ function _stepDR(a, r, c) {
 }
 
 function _stepDL(a, r, c) {
-	const nr = r + (a & 1);
 	const na = 1 - a;
+	const nr = r + (a & 1);
 	const nc = c - (na & 1);
 	return { a: na, r: nr, c: nc };
 }
 
 function _stepUR(a, r, c) {
-	const nr = r - (a & 1);
+	const na = 1 - a;
+	const nr = r - (na & 1);
 	const nc = c + (a & 1);
-	return { a: 1 - a, r: nr, c: nc };
+	return { a: na, r: nr, c: nc };
 }
 
 function _stepUL(a, r, c) {
-	const nr = r - (a & 1);
 	const na = 1 - a;
+	const nr = r - (na & 1);
 	const nc = c - (na & 1);
 	return { a: na, r: nr, c: nc };
 }

@@ -170,11 +170,11 @@ function evaluateAhead(movesTbl, depth) {
 	for (let i = 0; i < lookMoves; i++) {
 		const candidate = sortedCandidates[i];
 		const moveKey = candidate[0];
-		console.log(`Evaluating move ${_getARCFromKey(moveKey)} for depth ${depth} as P1? ${isP1}...`);
+		// console.log(`Evaluating move ${_getARCFromKey(moveKey)} for depth ${depth} as P1? ${isP1}...`);
 		movesTbl.set(moveKey, {index: -1, isP1: isP1});
 		const moveEval = evaluateAhead(movesTbl, depth+1);
 		movesTbl.delete(moveKey);
-		console.log(`Move ${_getARCFromKey(moveKey)} for P1? ${isP1} for depth ${depth} has score ${moveEval}`);
+		// console.log(`Move ${_getARCFromKey(moveKey)} for P1? ${isP1} for depth ${depth} has score ${moveEval}`);
 		// If this is the first try, or this move is better for us than the previous
 		// best, update the best move.
 		if (bestEval === undefined ||
