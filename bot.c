@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
-#include <stdlib.h>
 
 #ifdef DEBUG
 #include <stdio.h>
@@ -30,6 +29,10 @@
 #define MIN_EVAL_WIDTH	4
 #define EVAL_WIDTH_STEP	2
 
+#define PUSH_MOVE_STACK(stack, sz, mme) ({	\
+	(stack)[(sz)] = (mme)->mme_key;		\
+	(sz)++;					\
+})
 
 typedef struct mm_entry {
 	struct mm_entry	*mme_next;
@@ -71,6 +74,43 @@ fnv_hash(uint64_t key)
 		i++;
 	}
 	return hval;
+}
+
+// If we're calling this, we don't care about the linked list anymore, so no
+// need to swap the next pointers.
+void
+swap_entries(mm_entry_t *entries, int i, int j)
+{
+	int		tmp_mme_value;
+	uint64_t	tmp_mme_key;
+
+	tmp_mme_key = entries[i].mme_key;
+	tmp_mme_value = entries[i].mme_value;
+	entries[i].mme_key = entries[j].mme_key;
+	entries[i].mme_value = entries[j].mme_value;
+	entries[j].mme_key = tmp_mme_key;
+	entries[j].mme_value = tmp_mme_value;
+}
+
+// Courtesy of rosetta code
+mm_entry_t *
+mm_entries_qselect(mm_entry_t *entries, int len, int k)
+{
+	int i, st;
+
+	for (st = i = 0; i < len - 1; i++) {
+		if (entries[i].mme_value < entries[len-1].mme_value) continue;
+		swap_entries(entries, i, st);
+		st++;
+	}
+	swap_entries(entries, len-1, st);
+	if(k == st) {
+		return &entries[st];
+	} else if(st > k) {
+		return mm_entries_qselect(entries, st, k);
+	} else {
+		return mm_entries_qselect(entries + st, len - st, k - st);
+	}
 }
 
 uint64_t
@@ -412,12 +452,6 @@ evaluate_board(move_map_t *mm, move_map_t *candidate_moves)
 }
 
 int
-comp_candidates(const void *a, const void *b)
-{
-	return (((mm_entry_t *)b)->mme_value - ((mm_entry_t *)a)->mme_value);
-}
-
-int
 look_moves_at_depth(int depth)
 {
 	int 	moves;
@@ -436,11 +470,14 @@ look_moves_at_depth(int depth)
 // be returned to its original state when this function exits.
 int
 do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
-		  uint64_t *best_move)
+		  int alpha, int beta, uint64_t *best_move)
 {
 	bool		is_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score;
+	int		im_count;
 	uint64_t	current_move;
+	uint64_t	impact_moves[MAX_EVAL_WIDTH];
+	mm_entry_t	*kth_largest, *entry;
 
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
 	current_eval = evaluate_board(mm, candidate_moves);
@@ -462,17 +499,51 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	// Now we need to go through the moves and evaluate them in order. The moves
 	// are labeled with a score of how impactful they are. We simply go through them
 	// in order of impact, and see which gives us the best evaluation.
-	qsort(candidate_moves->mm_stack, candidate_moves->mm_stack_size,
-	      sizeof(mm_entry_t), comp_candidates);
 	look_moves = look_moves_at_depth(depth);
 	if(look_moves > candidate_moves->mm_stack_size) {
 		look_moves = candidate_moves->mm_stack_size;
+		// If we are taking every element, skip all of the below code.
+		// First copy every move over though.
+		for(i = 0; i < look_moves; i++) {
+			entry = &candidate_moves->mm_stack[i];
+			PUSH_MOVE_STACK(impact_moves, im_count, entry);
+		}
+		goto eval_impact_moves;
 	}
-	for(i = 0; i < look_moves; i++) {
-		current_move = candidate_moves->mm_stack[i].mme_key;
+	// First find the kth largest element:
+	kth_largest = mm_entries_qselect(candidate_moves->mm_stack,
+					 candidate_moves->mm_stack_size,
+					 look_moves - 1);
+	// Now copy <look_moves> moves from candidate_moves if they have a large
+	// enough impact. We first copy those with larger impact than kth, element,
+	// then those with impact == kth, because we don't want to miss any elements
+	// with high impact.
+	im_count = 0;
+	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
+		entry = &candidate_moves->mm_stack[i];
+		if(entry->mme_value > kth_largest->mme_value) {
+			PUSH_MOVE_STACK(impact_moves, im_count, entry);
+		}
+	}
+	assert(im_count < look_moves);
+	// Now copy with impact == kth until we fill enough slots.
+	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
+		entry = &candidate_moves->mm_stack[i];
+		if(entry->mme_value == kth_largest->mme_value) {
+			PUSH_MOVE_STACK(impact_moves, im_count, entry);
+			if(im_count >= look_moves) {
+				break;
+			}
+		}
+	}
+
+eval_impact_moves:
+	// Now iterate over every impact move.
+	for(i = 0; i < im_count; i++) {
+		current_move = impact_moves[i];
 		mm_insert(mm, current_move, is_p1);
 		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
-					     best_move);
+					     alpha, beta, best_move);
 		mm_remove(mm, current_move);
 		// If this is the first try, or this move is better for us than the previous
 		// best, update the best move.
@@ -481,10 +552,21 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 			best_score = sub_eval;
 			*best_move = current_move;
 		}
-		// If the current player wins with this move, stop looking for other moves.
-		if((is_p1 && best_score == P1_WON) ||
-		   (!is_p1 && best_score == P2_WON)) {
-			break;
+		// Update alpha/beta bounds and prune if the opponent can already do better.
+		if(is_p1) {
+			if(best_score > alpha) {
+				alpha = best_score;
+			}
+			if(alpha >= beta) {
+				break;
+			}
+		} else {
+			if(best_score < beta) {
+				beta = best_score;
+			}
+			if(beta <= alpha) {
+				break;
+			}
 		}
 	}
 	return depth == 0 ? 0 : best_score;
@@ -502,7 +584,8 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 
 	mm_init(&mm);
 	populate_move_map(&mm, as, rs, cs, is_p1s, num_moves);
-	err = do_evaluate_ahead(&mm, &candidate_moves, 0, &best_move);
+	err = do_evaluate_ahead(&mm, &candidate_moves, 0, P2_WON, P1_WON,
+				&best_move);
 	if(err == 0) {
 		pos_from_mm_key(best_move, &best_move_pos);
 		*best_a = best_move_pos.a;
