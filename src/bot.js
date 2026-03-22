@@ -123,11 +123,22 @@ function evaluateBoard(movesTbl) {
 	return {totalScore: totalScore, candidateMoves: candidateMovesTbl};
 }
 
-// This function chooses the best move for the given player, based on the moves
+function isP1ForTurn(numMoves) {
+	if (numMoves == 0) {
+		return true;
+	}
+	if (Math.floor((numMoves - 1) / 2) % 2 == 0) {
+		return false;
+	}
+	return true;
+}
+
+// This function chooses the best move for the current player, based on the moves
 // passed in. Do not rely on the move index in the movesTbl value; it may not be set.
 // movesTbl is shared between calls to this function, it must
 // be returned to its original state when this function exits.
-function evaluateAhead(movesTbl, isP1, depth) {
+function evaluateAhead(movesTbl, depth) {
+	const isP1 = isP1ForTurn(movesTbl.size);
 	const evaluation = evaluateBoard(movesTbl);
 	const currentEval = evaluation.totalScore;
 	// If one of the players won, just return that info. There's nothing else to
@@ -157,7 +168,7 @@ function evaluateAhead(movesTbl, isP1, depth) {
 		const candidate = sortedCandidates[i];
 		const moveKey = candidate[1];
 		movesTbl.set(moveKey, {index: -1, isP1: isP1});
-		const moveEval = evaluateAhead(movesTbl, !isP1, depth+1);
+		const moveEval = evaluateAhead(movesTbl, depth+1);
 		movesTbl.delete(moveKey);
 		// If this is the first try, or this move is better for us than the previous
 		// best, update the best move.
