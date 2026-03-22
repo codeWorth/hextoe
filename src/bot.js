@@ -1,6 +1,6 @@
 const P1_WON = 262144;
 const P2_WON = -262144;
-const STEP_FN_PAIRS = [(_stepR, _stepL), (_stepDR, _stepUL), (_stepDL, _stepUR)];
+const STEP_FN_PAIRS = [[_stepR, _stepL], [_stepDR, _stepUL], [_stepDL, _stepUR]];
 const MAX_EVAL_DEPTH = 5;
 
 // At earlier depths, consider many moves. At later depths, consider fewer.
