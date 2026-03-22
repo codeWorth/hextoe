@@ -64,3 +64,18 @@ class UserProfileResponse(BaseModel):
 
 class GameListResponse(BaseModel):
     games: list[GameListEntry]
+
+
+class ChatMessageBody(BaseModel):
+    message: str
+    sent_time: datetime
+
+
+class ChatMessageEntry(BaseModel):
+    sender_uname: str
+    sent_time: datetime
+    message: str
+
+
+class ChatResponse(BaseModel):
+    messages: list[ChatMessageEntry]

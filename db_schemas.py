@@ -7,6 +7,7 @@ from sqlmodel import Field, SQLModel
 ID_LEN_BYTES = 32
 ID_LEN = (ID_LEN_BYTES * 3) // 2
 UNAME_MAX = 64
+CHATMESSAGE_MAX=256
 
 # User always has some session_id, but the TTL may indicate it has expired.
 class User(SQLModel, table=True):
@@ -49,3 +50,15 @@ class Move(SQLModel, table=True):
     a: bool  # row parity (0 or 1)
     r: int   # row
     c: int   # column
+
+
+class ChatMessage(SQLModel, table=True):
+    game_id: str = Field(max_length=ID_LEN, foreign_key="game.game_id", primary_key=True)
+    chat_id: int = Field(primary_key=True, autoincrement=True)
+    message: str = Field(max_length=CHATMESSAGE_MAX)
+    sender_id: str = Field(max_length=ID_LEN, foreign_key="user.user_id")
+    sent_time: datetime = Field(default_factory=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_game_sent_time", "sent_time"),
+    )

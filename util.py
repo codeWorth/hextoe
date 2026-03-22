@@ -15,6 +15,7 @@ MOVE_ALREADY_TAKEN = "ALREADY_TAKEN"
 MOVE_TOO_FAR = "TOO_FAR"
 MAX_MOVE_DIST = 7
 MAX_GAME_AGE_MINUTES = 5
+MAX_MESSAGES = 100
 
 def hash_password(password: str) -> bytes:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
@@ -169,7 +170,7 @@ def get_current_player_id(game: Game, num_moves: int) -> Optional[str]:
 
 # Construct the game state dict for sending to the client.
 # Pass None for asker_id if it's not a logged in request
-def build_game_state(game: Game, moves: list[Move], asker_id: str) -> dict:
+def build_game_state(game, moves: list[Move], asker_id: str) -> dict:
     is_your_turn = False
     if not game.is_complete and asker_id is not None:
         is_your_turn = asker_id == get_current_player_id(game, len(moves))

@@ -30,6 +30,14 @@ Move
  - R (signed int)
  - C (signed int)
 
+ Chat Message
+  - compound key:
+	- game id
+	- message index (sequential, starts at 0)
+  - message content (max 256 chars)
+  - sending player id
+  - creation timestamp
+
 
 REST API (all endpoints prefixed with /api)
 
@@ -150,8 +158,34 @@ POST /api/game/forfeit/<game id> takes nothing, returns nothing
     If only one player is present, marks game complete with no winner, returns 204
 
 
-GET /api/games takes nothing, returns json
-	Returns a list of 
+GET /api/game/<game_id>/chat takes optional index query param, returns json
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If the game id doesn't exist, returns 404
+	If the user isn't one of the players in the game, returns 400
+	If the index is greater than the # of messages, or less than 0, returns 400
+	Returns the chat messages in the game in reverse chronological order (newest first).
+	It starts at the given index, or at the last message, if no index is provided, and returns messages going back in time from there.
+	Then returns at most MAX_MESSAGES.
+	Json response body:
+		- messages (list):
+			- sender username
+			- messages sent timestamp
+			- message content
+
+POST /api/game/<game_id>/chat takes json body, returns json
+    Header contains session id
+    If session id doesn't match any user, return 403
+    If TTL of session id is past current time, return 403
+    If the game id doesn't exist, returns 404
+	If the user isn't one of the players in the game, returns 400
+	Request json body:
+		- message: string
+	Inserts a chat message record into the chat message table.
+	Returns MAX_MESSAGES messages, in reverse chronological order, starting at the most recent one (the one the user just sent).
+	Response body is the same as GET /api/game/<game_id>/chat's response
+
 
 Some additional game mechanics:
 

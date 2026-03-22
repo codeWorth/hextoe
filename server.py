@@ -1,17 +1,20 @@
 import asyncio
 import random
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Union
 import os
 
-from fastapi import Cookie, FastAPI, HTTPException, Response
+from fastapi import Cookie, FastAPI, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy import and_, func, or_, update, not_
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from db_schemas import Game, Move, User, UNAME_MAX
+from db_schemas import ChatMessage, Game, Move, User, UNAME_MAX, CHATMESSAGE_MAX
 from json_schemas import (
+    ChatMessageBody,
+    ChatResponse,
     GameStateResponse,
     MoveBody,
     MoveFailureResponse,
@@ -40,6 +43,7 @@ from util import (
     get_min_req,
     prune_delete_game_conds,
     prune_finish_game_conds,
+    MAX_MESSAGES,
 )
 
 
@@ -390,7 +394,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
         if game is None:
             raise HTTPException(status_code=404)
 
-        if user_id is not None:
+        if user_id is not None and not game.is_complete:
             other_last_req = None
             if game.player_id_1 == user_id:
                 other_last_req = game.last_req_p2
@@ -408,9 +412,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
                     )
                 )
                 db.commit()
-                # Also update the local copy so we return up to date info
-                game.is_complete = True
-                game.winner_id = user_id
+                game = SimpleNamespace(**{**game._asdict(), "is_complete": True, "winner_id": user_id})
             elif game.player_id_1 == user_id or game.player_id_2 == user_id:
                 update_game_last_req(game_id, user_id, db)
 
@@ -576,3 +578,60 @@ def forfeit_game(game_id: str, session_id: str = Cookie(...)):
             )
         db.add(game)
         db.commit()
+
+
+def _get_chat_messages(game_id: str, db: Session, start_index: Optional[int]):
+    stmt = (select(ChatMessage, User.username, User.is_deleted, User.is_anon)
+        .join(User, ChatMessage.sender_id == User.user_id)
+        .where(ChatMessage.game_id == game_id)
+        .order_by(ChatMessage.sent_time.desc())
+        .limit(MAX_MESSAGES))
+    if start_index is not None:
+        stmt = stmt.where(ChatMessage.chat_id <= start_index)
+    msgs = db.exec(stmt).all()
+    return {"messages": [{
+        "sender_uname": get_uname_safe(user_name, is_deleted, is_anon),
+        "sent_time": msg.sent_time,
+        "message": msg.message,
+    } for msg, user_name, is_deleted, is_anon in msgs]}
+
+
+def _require_player_in_game(game: Game, user_id: str):
+    if game.player_id_1 != user_id and game.player_id_2 != user_id:
+        raise HTTPException(status_code=400)
+
+
+@app.get("/api/game/{game_id}/chat", response_model=ChatResponse)
+def get_chat(game_id: str, index: Optional[int] = Query(None), session_id: str = Cookie(...)):
+    with Session(engine) as db:
+        user = require_valid_session(session_id, db)
+        game = db.get(Game, game_id)
+        if game is None:
+            raise HTTPException(status_code=404)
+        _require_player_in_game(game, user.user_id)
+
+        if index is not None and index < 0:
+                raise HTTPException(status_code=400)
+
+        return _get_chat_messages(game_id, db, start_index)
+
+
+@app.post("/api/game/{game_id}/chat", response_model=ChatResponse)
+def post_chat(game_id: str, body: ChatMessageBody, session_id: str = Cookie(...)):
+    with Session(engine) as db:
+        user = require_valid_session(session_id, db)
+        game = db.get(Game, game_id)
+        if game is None:
+            raise HTTPException(status_code=404)
+        _require_player_in_game(game, user.user_id)
+
+        msg = ChatMessage(
+            game_id=game_id,
+            message=body.message[:CHATMESSAGE_MAX],
+            sender_id=user.user_id,
+            sent_time=body.sent_time
+        )
+        db.add(msg)
+        db.commit()
+
+        return _get_chat_messages(game_id, db, None)
