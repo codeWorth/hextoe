@@ -122,17 +122,6 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves,
 		}
 	}
 
-	if (bestMove) {
-		const move = _getARCFromKey(bestMove);
-		const pos = hexToPixel(move.a, move.r, move.c);
-		const sx = pos.x - camX + w / 2;
-		const sy = pos.y - camY + h / 2;
-		if (!outOfBounds(sx, sy, w, h)) {
-			stroke = "#ddd";
-			drawHex(ctx, sx, sy, HEX_SIZE, null, stroke);
-		}
-	}
-
 	if (!submoves) return;
 
 	for (let i = 0; i < submoves.length; i++) {
@@ -153,5 +142,16 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves,
 		drawHex(ctx, sx, sy, HEX_SIZE, fill, stroke);
 		if (move.p1) drawX(ctx, sx, sy, HEX_SIZE);
 		else drawO(ctx, sx, sy, HEX_SIZE);
+	}
+
+	if (bestMove) {
+		const move = _getARCFromKey(bestMove);
+		const pos = hexToPixel(move.a, move.r, move.c);
+		const sx = pos.x - camX + w / 2;
+		const sy = pos.y - camY + h / 2;
+		if (!outOfBounds(sx, sy, w, h)) {
+			stroke = "#ddd";
+			drawHex(ctx, sx, sy, HEX_SIZE, null, stroke);
+		}
 	}
 }
