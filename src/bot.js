@@ -92,8 +92,8 @@ function evaluateBoard(movesTbl) {
 		for (const stepFns of STEP_FN_PAIRS) {
 			let subscore = scoreLine(movesTbl, pos, stepFns[0], stepFns[1]);
 			// If we got a winner, just return that.
-			if (subscore == P1_WON || subscore == P2_WON) {
-				return {totalScore: subscore};
+			if (subscore.score == P1_WON || subscore.score == P2_WON) {
+				return {totalScore: subscore.score};
 			}
 			// If this move got scored 0, we don't care about it at all.
 			if (subscore.score == 0) {
