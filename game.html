@@ -95,7 +95,9 @@ let winningMoves = null;
 let bestMove = null;
 
 function setGameState(val) {
-    if (_gameState === null || _gameState.moves.length != val.moves.length) {
+    if (_gameState === null || _gameState.moves.length != val.moves.length &&
+        val.moves.length > 1
+    ) {
         bestMove = evaluateAhead(movesToTbl(val.moves), 0);
     }
 	_gameState = val;
