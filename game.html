@@ -95,6 +95,7 @@ let winningMoves = null;
 
 function setGameState(val) {
 	_gameState = val;
+    bestMove = evaluateAhead(movesToTbl(_gameState.moves), 0);
 	if (_gameState && _gameState.winner_id) {
 		winningMoves = findWinningMoves(_gameState.moves);
 	} else {
