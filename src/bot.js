@@ -95,6 +95,9 @@ function evaluateBoard(movesTbl) {
 			if (subscore.score == 0) {
 				continue;
 			}
+			// We want to make high scores much more desirable. Otherwise, points of interest,
+			// a.k.a. locations with many nearby tiles, get overrepresented.
+			subscore.score = subscore.score * subscore.score * subscore.score;
 			totalScore += subscore.score;
 			// Go over every candidate move that was returned, and put them into the candidate table.
 			// Either add the score to existing, or set it if it doesn't already exist.
