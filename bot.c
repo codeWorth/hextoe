@@ -6,6 +6,7 @@
 
 #ifdef DEBUG
 #include <stdio.h>
+#include <time.h>
 #endif
 
 /*
@@ -18,12 +19,17 @@
 #define MM_BUCKETS	512
 #define MM_MASK		(MM_BUCKETS - 1)
 #define MM_STACK_SIZE	2048
-#define MME_INDEX(key)	(fnv_hash(key) & MM_MASK)
+#define HASH_FN(key)	splitmix64(key)
+#define MME_INDEX(key)	(HASH_FN(key) & MM_MASK)
 
 #define MASK_31		0x7FFFFFFFULL
 #define P1_WON		262144
 #define P2_WON		-262144
-#define MAX_EVAL_DEPTH	6
+#define MAX_EVAL_DEPTH	8
+#define MAX_EVAL_WIDTH	15
+#define MIN_EVAL_WIDTH	4
+#define EVAL_WIDTH_STEP	2
+
 
 typedef struct mm_entry {
 	struct mm_entry	*mme_next;
@@ -44,6 +50,15 @@ typedef struct arc {
 } arc_t;
 
 uint64_t
+splitmix64(uint64_t key) {
+    key += 0x9e3779b97f4a7c15;
+    key = (key ^ (key >> 30)) * 0xbf58476d1ce4e5b9;
+    key = (key ^ (key >> 27)) * 0x94d049bb133111eb;
+    return key ^ (key >> 31);
+}
+
+// Turns out this is way slower than splitmix64
+uint64_t
 fnv_hash(uint64_t key)
 {
 	int		i = 0;
@@ -53,6 +68,7 @@ fnv_hash(uint64_t key)
 		hval ^= key & 0xFF;
 		hval *= FNV_PRIME;
 		key >>= 8;
+		i++;
 	}
 	return hval;
 }
@@ -67,7 +83,6 @@ mm_make_key(arc_t *arc)
 	key |= arc->r & MASK_31;
 	key <<= 31;
 	key |= arc->c & MASK_31;
-	key <<= 1;
 	return key;
 }
 
@@ -334,7 +349,7 @@ populate_move_map(move_map_t *mm, int* as, int* rs, int* cs, int* is_p1s,
 int
 evaluate_board(move_map_t *mm, move_map_t *candidate_moves)
 {
-	int 		r, c, i, score, mcount, total_score = 0;
+	int 		r, c, i, j, score, mcount, total_score = 0;
 	bool		a;
 	arc_t		arc;
 	uint64_t	move1, move2;
@@ -346,37 +361,50 @@ evaluate_board(move_map_t *mm, move_map_t *candidate_moves)
 	for(i = 0; i < mm->mm_stack_size; i++) {
 		entry = &mm->mm_stack[i];
 		pos_from_mm_key(entry->mme_key, &arc);
-		mcount = score_line(mm, entry, &arc, &score, &move1, &move2,
-				    step_r, step_l);
-		// If we got a winner, just return that.
-		if(score == P1_WON || score == P2_WON) {
-			return score;
-		}
-		// If this move got scored 0, we don't care about it at all.
-		if(score == 0) {
-			continue;
-		}
-		total_score += score;
-		// Make score always positive
-		if(score < 0) {
-			score = -score;
-		}
-		// Insert/update at move1
-		if(mcount == 1) {
-			cm_entry = mm_get(candidate_moves, move1);
-			if(cm_entry == NULL) {
-				mm_insert(candidate_moves, move1, score);
+		for(j = 0; j < 3; j++) {
+			if(j == 0) {
+				mcount = score_line(mm, entry, &arc, &score,
+						    &move1, &move2,
+						    step_r, step_l);
+			} else if(j == 1) {
+				mcount = score_line(mm, entry, &arc, &score,
+						    &move1, &move2,
+						    step_dr, step_ul);
 			} else {
-				cm_entry->mme_value += score;
+				mcount = score_line(mm, entry, &arc, &score,
+						    &move1, &move2,
+						    step_dl, step_ur);
 			}
-		}
-		// Insert/update at move2
-		if(mcount == 2) {
-			cm_entry = mm_get(candidate_moves, move2);
-			if(cm_entry == NULL) {
-				mm_insert(candidate_moves, move2, score);
-			} else {
-				cm_entry->mme_value += score;
+			// If we got a winner, just return that.
+			if(score == P1_WON || score == P2_WON) {
+				return score;
+			}
+			// If this move got scored 0, we don't care about it at all.
+			if(score == 0) {
+				continue;
+			}
+			total_score += score;
+			// Make score always positive
+			if(score < 0) {
+				score = -score;
+			}
+			// Insert/update at move1
+			if(mcount >= 1) {
+				cm_entry = mm_get(candidate_moves, move1);
+				if(cm_entry == NULL) {
+					mm_insert(candidate_moves, move1, score);
+				} else {
+					cm_entry->mme_value += score;
+				}
+			}
+			// Insert/update at move2
+			if(mcount >= 2) {
+				cm_entry = mm_get(candidate_moves, move2);
+				if(cm_entry == NULL) {
+					mm_insert(candidate_moves, move2, score);
+				} else {
+					cm_entry->mme_value += score;
+				}
 			}
 		}
 	}
@@ -392,10 +420,14 @@ comp_candidates(const void *a, const void *b)
 int
 look_moves_at_depth(int depth)
 {
-	if(depth < 4) {
-		return 11 - depth*2;
+	int 	moves;
+
+	moves = MAX_EVAL_WIDTH - depth * EVAL_WIDTH_STEP;
+	if(moves < MIN_EVAL_WIDTH) {
+		return MIN_EVAL_WIDTH;
+	} else {
+		return moves;
 	}
-	return 3;
 }
 
 // This function chooses the best move for the current player, based on the moves
@@ -406,8 +438,8 @@ int
 do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 		  uint64_t *best_move)
 {
-	bool		i, is_p1, look_moves, sub_eval;
-	int		current_eval, best_score;
+	bool		is_p1;
+	int		i, sub_eval, look_moves, current_eval, best_score;
 	uint64_t	current_move;
 
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
@@ -497,10 +529,18 @@ main(int argc, char const *argv[])
 	int 	is_p1s[27] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
 			      0, 1, 1, 0, 0, 1, 1, 0, 0};
 
+	struct timespec t0, t1;
+	clock_gettime(CLOCK_MONOTONIC, &t0);
 	found_move = evaluate_ahead(as, rs, cs, is_p1s, 27, &best_a, &best_r,
 				    &best_c);
+	clock_gettime(CLOCK_MONOTONIC, &t1);
+	double elapsed = (t1.tv_sec - t0.tv_sec) * 1e3 +
+			 (t1.tv_nsec - t0.tv_nsec) / 1e6;
+	printf("evaluate_ahead: %.3f ms\n", elapsed);
 	if(found_move) {
-
+		printf("%d %d %d\n", best_a, best_r, best_c);
+	} else {
+		printf("Failed to find move.");
 	}
 	return 0;
 }
