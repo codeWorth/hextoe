@@ -144,7 +144,7 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves,
 		else drawO(ctx, sx, sy, HEX_SIZE);
 	}
 
-	if (bestMove) {
+	if (bestMove !== null) {
 		const move = _getARCFromKey(bestMove);
 		const pos = hexToPixel(move.a, move.r, move.c);
 		const sx = pos.x - camX + w / 2;
