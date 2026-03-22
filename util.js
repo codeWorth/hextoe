@@ -213,7 +213,7 @@ function _lineIndices(movesTbl, pos, stepFn) {
 		ca = next.a; cr = next.r; cc = next.c;
 		const k = _getPosKey(next);
 		const nextEntry = movesTbl.get(k);
-		if (idx === undefined || nextEntry.isP1 !== isP1) return [];
+		if (nextEntry === undefined || nextEntry.isP1 !== isP1) return [];
 		const idx = nextEntry.index;
 		indices.push(idx);
 	}
