@@ -168,7 +168,7 @@ function evaluateAhead(movesTbl, depth) {
 	let bestMoveKey = undefined;
 	for (let i = 0; i < lookMoves; i++) {
 		const candidate = sortedCandidates[i];
-		const moveKey = candidate[1];
+		const moveKey = candidate[0];
 		movesTbl.set(moveKey, {index: -1, isP1: isP1});
 		const moveEval = evaluateAhead(movesTbl, depth+1);
 		movesTbl.delete(moveKey);
