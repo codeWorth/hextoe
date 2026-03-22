@@ -5,9 +5,6 @@ const MAX_EVAL_DEPTH = 5;
 
 // At earlier depths, consider many moves. At later depths, consider fewer.
 function lookMovesAtDepth(depth) {
-	if (depth > MAX_EVAL_DEPTH) {
-		return 1;
-	}
 	if (depth < 3) {
 		return 5 - depth;
 	}
@@ -151,6 +148,10 @@ function evaluateAhead(movesTbl, depth) {
 		} else {
 			return currentEval;
 		}
+	}
+	// If this is our max depth, just return the current eval without finding anything more accurate.
+	if (depth >= MAX_EVAL_DEPTH) {
+		return currentEval;
 	}
 	// Now we need to go through the moves and evaluate them in order. The moves
 	// are labeled with a score of how impactful they are. We simply go through them
