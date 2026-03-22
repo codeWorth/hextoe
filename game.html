@@ -98,7 +98,9 @@ function setGameState(val) {
     if (_gameState === null || _gameState.moves.length != val.moves.length &&
         val.moves.length > 1
     ) {
+        console.time("GetBestMove");
         bestMove = evaluateAhead(movesToTbl(val.moves), 0);
+        console.timeEnd("GetBestMove");
     }
 	_gameState = val;
 	if (_gameState && _gameState.winner_id) {
