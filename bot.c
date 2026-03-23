@@ -65,8 +65,8 @@
 
 #define PUSH_STACK(ml, move, score) ({				\
 	assert((ml)->ml_len < (ml)->ml_size);			\
-	(ml)->ml_moves[((ml)->ml_len)].mhe_move = (move);	\
-	(ml)->ml_moves[((ml)->ml_len)].mhe_score = (score);	\
+	(ml)->ml_moves[((ml)->ml_len)].mle_move = (move);	\
+	(ml)->ml_moves[((ml)->ml_len)].mle_score = (score);	\
 	(ml)->ml_len++;						\
 })
 
@@ -94,6 +94,18 @@
 	(e)->prev = (e)->next = NULL;			\
 }
 
+#define MM_ENTRY_SET(d, s) ({			\
+	(d)->mme_next = (s)->mme_next;		\
+	(d)->mme_prev = (s)->mme_prev;		\
+	(d)->mme_key = (s)->mme_key;		\
+	(d)->mme_value = (s)->mme_value;	\
+})
+
+#define ML_ENTRY_SET(d, s) ({			\
+	(d)->mle_move = (s)->mle_move;		\
+	(d)->mle_score = (s)->mle_score;	\
+})
+
 typedef struct mm_entry {
 	struct mm_entry	*mme_next;
 	struct mm_entry	*mme_prev;
@@ -114,8 +126,8 @@ typedef struct arc {
 } arc_t;
 
 typedef struct move_entry {
-	uint64_t	mhe_move;
-	int		mhe_score;
+	uint64_t	mle_move;
+	int		mle_score;
 } move_entry_t;
 
 typedef struct move_list {
@@ -148,25 +160,23 @@ fnv_hash(uint64_t key)
 	return hval;
 }
 
-// If we're calling this, we don't care about the linked list anymore, so no
-// need to swap the next pointers.
+// We need to remember to swap pointers so that the map stays valid.
 void
 swap_entries(mm_entry_t *entries, int i, int j)
 {
-	int		tmp_mme_value;
-	uint64_t	tmp_mme_key;
+	mm_entry_t	tmp_entry;
 
-	tmp_mme_key = entries[i].mme_key;
-	tmp_mme_value = entries[i].mme_value;
+	MM_ENTRY_SET(&tmp_entry, &entries[i]);
 	entries[i].mme_key = entries[j].mme_key;
 	entries[i].mme_value = entries[j].mme_value;
-	entries[j].mme_key = tmp_mme_key;
-	entries[j].mme_value = tmp_mme_value;
+	entries[j].mme_key = tmp_entry.mme_key;
+	entries[j].mme_value = tmp_entry.mme_value;
 }
 
 // Courtesy of rosetta code. QuickSelect algorithm. Modifies the given array.
 // This reorders the stack, so popping from the stack will be a bad idea now.
-// However, it updates the hash map, so no worries about continuing to use it.
+// However, it updates the node pointers, so no worries about continuing to use
+// the hash map.
 mm_entry_t *
 mm_entries_qselect(mm_entry_t *entries, int len, int k)
 {
@@ -195,16 +205,13 @@ ml_sort(move_list_t *ml) {
 	move_entry_t	e;
 
 	for(size_t i = 1; i < len; ++i) {
-		e.mhe_move = ml->ml_moves[i].mhe_move;
-		e.mhe_score = ml->ml_moves[i].mhe_score;
+		ML_ENTRY_SET(&e, &ml->ml_moves[i]);
 		j = i;
-		while((j > 0) && (e.mhe_score > ml->ml_moves[j - 1].mhe_score)) {
-			ml->ml_moves[j].mhe_move = ml->ml_moves[j - 1].mhe_move;
-			ml->ml_moves[j].mhe_score = ml->ml_moves[j - 1].mhe_score;
+		while((j > 0) && (e.mle_score > ml->ml_moves[j - 1].mle_score)) {
+			ML_ENTRY_SET(&ml->ml_moves[j], &ml->ml_moves[j - 1]);
 			--j;
 		}
-		ml->ml_moves[j].mhe_move = e.mhe_move;
-		ml->ml_moves[j].mhe_score = e.mhe_score;
+		ML_ENTRY_SET(&ml->ml_moves[j], &e);
 	}
 }
 
@@ -217,14 +224,13 @@ mh_push(move_list_t *mh, uint64_t move, int score)
 	assert(mh->ml_len < mh->ml_size);
 	i = mh->ml_len + 1;
 	j = i / 2;
-	while(i > 1 && mh->ml_moves[j].mhe_score > score) {
-		mh->ml_moves[i].mhe_move = mh->ml_moves[j].mhe_move;
-		mh->ml_moves[i].mhe_score = mh->ml_moves[j].mhe_score;
+	while(i > 1 && mh->ml_moves[j].mle_score > score) {
+		ML_ENTRY_SET(&mh->ml_moves[i], &mh->ml_moves[j]);
 		i = j;
 		j = j / 2;
 	}
-	mh->ml_moves[i].mhe_score = move;
-	mh->ml_moves[i].mhe_score = score;
+	mh->ml_moves[i].mle_score = move;
+	mh->ml_moves[i].mle_score = score;
 	mh->ml_len++;
 }
 
@@ -234,22 +240,20 @@ mh_pop(move_list_t *mh) {
 	uint64_t	move;
 
 	assert(mh->ml_len > 0);
-	move = mh->ml_moves[1].mhe_move;
-	mh->ml_moves[1].mhe_move = mh->ml_moves[mh->ml_len].mhe_move;
-	mh->ml_moves[1].mhe_score = mh->ml_moves[mh->ml_len].mhe_score;
+	move = mh->ml_moves[1].mle_move;
+	ML_ENTRY_SET(&mh->ml_moves[1], &mh->ml_moves[mh->ml_len]);
 	mh->ml_len--;
 	i = 1;
 	while(i != mh->ml_len + 1) {
 		k = mh->ml_len + 1;
 		j = 2 * i;
-		if (j <= mh->ml_len && mh->ml_moves[j].mhe_score < mh->ml_moves[k].mhe_score) {
+		if (j <= mh->ml_len && mh->ml_moves[j].mle_score < mh->ml_moves[k].mle_score) {
 			k = j;
 		}
-		if (j + 1 <= mh->ml_len && mh->ml_moves[j + 1].mhe_score < mh->ml_moves[k].mhe_score) {
+		if (j + 1 <= mh->ml_len && mh->ml_moves[j + 1].mle_score < mh->ml_moves[k].mle_score) {
 			k = j + 1;
 		}
-		mh->ml_moves[i].mhe_move = mh->ml_moves[k].mhe_move;
-		mh->ml_moves[i].mhe_score = mh->ml_moves[k].mhe_score;
+		ML_ENTRY_SET(&mh->ml_moves[i], &mh->ml_moves[k]);
 		i = k;
 	}
 	return move;
@@ -684,7 +688,7 @@ eval_impact_moves:
 	// Now iterate over every impact move.
 	ml_sort(&impact_moves);
 	for(i = 0; i < impact_moves.ml_len; i++) {
-		current_move = impact_moves.ml_moves[i].mhe_move;
+		current_move = impact_moves.ml_moves[i].mle_move;
 		mm_insert(mm, current_move, is_p1);
 		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
 					     alpha, beta, NULL);
