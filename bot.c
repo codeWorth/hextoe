@@ -24,10 +24,13 @@
 #define MASK_31		0x7FFFFFFFULL
 #define P1_WON		262144
 #define P2_WON		-262144
+
+#ifdef EVAL_DEFAULTS
 #define MAX_EVAL_DEPTH	6
-#define MAX_EVAL_WIDTH	11
+#define MAX_EVAL_WIDTH	15
 #define MIN_EVAL_WIDTH	4
 #define EVAL_WIDTH_STEP	2
+#endif
 
 #define PUSH_MOVE_STACK(stack, sz, mme) ({	\
 	(stack)[(sz)] = (mme)->mme_key;		\
