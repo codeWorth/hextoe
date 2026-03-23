@@ -168,13 +168,29 @@ swap_entries(mm_entry_t *entries, int i, int j)
 
 	MM_ENTRY_SET(&tmp_entry, &entries[i]);
 
-	entries[i].mme_next->mme_prev = &entries[j];
-	entries[i].mme_prev->mme_next = &entries[j];
-	MM_ENTRY_SET(&entries[i], &entries[j]);
+	if(entries[i].mme_next == &entries[j]) {
+		MM_ENTRY_SET(&entries[i], &entries[j]);
+		MM_ENTRY_SET(&entries[j], &tmp_entry);
+		entries[i].mme_prev->mme_next = &entries[i];
+		entries[j].mme_next->mme_prev = &entries[j];
+		entries[i].mme_next = &entries[j];
+		entries[j].mme_next = &entries[i];
+	} else if(entries[j].mme_next == &entries[i]) {
+		MM_ENTRY_SET(&entries[i], &entries[j]);
+		MM_ENTRY_SET(&entries[j], &tmp_entry);
+		entries[j].mme_prev->mme_next = &entries[j];
+		entries[i].mme_next->mme_prev = &entries[i];
+		entries[j].mme_next = &entries[i];
+		entries[i].mme_next = &entries[j];
+	}else {
+		entries[i].mme_next->mme_prev = &entries[j];
+		entries[i].mme_prev->mme_next = &entries[j];
+		MM_ENTRY_SET(&entries[i], &entries[j]);
 
-	entries[j].mme_next->mme_prev = &entries[i];
-	entries[j].mme_prev->mme_next = &entries[i];
-	MM_ENTRY_SET(&entries[j], &tmp_entry);
+		entries[j].mme_next->mme_prev = &entries[i];
+		entries[j].mme_prev->mme_next = &entries[i];
+		MM_ENTRY_SET(&entries[j], &tmp_entry);
+	}
 }
 
 // Courtesy of rosetta code. QuickSelect algorithm. Modifies the given array.

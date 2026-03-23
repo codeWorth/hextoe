@@ -803,9 +803,6 @@ TEST(test_swap_entries_adjacent) {
 TEST(test_swap_entries_same_bucket) {
 	// Two keys that hash to the same bucket — swap must keep
 	// the bucket chain intact.
-	// NOTE: This test currently FAILS, exposing a real bug in swap_entries
-	// when the two entries are DLL-adjacent (prev/next point at each other).
-	// The pointer fixup in swap_entries creates a self-reference.
 	move_map_t mm;
 	mm_init(&mm);
 
@@ -830,6 +827,42 @@ TEST(test_swap_entries_same_bucket) {
 	mm_insert(&mm, kb, 0);
 
 	swap_entries(mm.mm_stack, 0, 1);
+
+	// Both must still be reachable through the same bucket chain
+	ASSERT_TRUE(mm_get(&mm, ka) != NULL);
+	ASSERT_TRUE(mm_get(&mm, kb) != NULL);
+	ASSERT_EQ(mm_get(&mm, ka)->mme_value, 1);
+	ASSERT_EQ(mm_get(&mm, kb)->mme_value, 0);
+}
+
+TEST(test_swap_entries_same_bucket_rev) {
+	// Two keys that hash to the same bucket — swap must keep
+	// the bucket chain intact.
+	// Tests passing the entries in the reverse order.
+	move_map_t mm;
+	mm_init(&mm);
+
+	// Find two keys that collide (same bucket index)
+	arc_t pa = {0, 0, 0};
+	uint64_t ka = mm_make_key(&pa);
+	uint32_t target_bucket = MME_INDEX(ka);
+
+	// Brute-force a second key in the same bucket
+	arc_t pb;
+	uint64_t kb;
+	int r;
+	for (r = 1; r < 1000; r++) {
+		pb = (arc_t){0, r, 0};
+		kb = mm_make_key(&pb);
+		if (MME_INDEX(kb) == target_bucket)
+			break;
+	}
+	ASSERT_EQ(MME_INDEX(kb), target_bucket);
+
+	mm_insert(&mm, ka, 1);
+	mm_insert(&mm, kb, 0);
+
+	swap_entries(mm.mm_stack, 1, 0);
 
 	// Both must still be reachable through the same bucket chain
 	ASSERT_TRUE(mm_get(&mm, ka) != NULL);
@@ -1006,6 +1039,7 @@ main(int argc, char const *argv[])
 	RUN(test_swap_entries_remove_after);
 	RUN(test_swap_entries_adjacent);
 	RUN(test_swap_entries_same_bucket);
+	RUN(test_swap_entries_same_bucket_rev);
 	RUN(test_swap_entries_many);
 
 	printf("\nml_sort:\n");
