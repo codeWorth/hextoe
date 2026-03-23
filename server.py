@@ -667,7 +667,7 @@ def get_chat(game_id: str, index: Optional[int] = Query(None), session_id: str =
         if index is not None and index < 0:
                 raise HTTPException(status_code=400)
 
-        return _get_chat_messages(game_id, db, start_index)
+        return _get_chat_messages(game_id, db, index)
 
 
 @app.post("/api/game/{game_id}/chat", response_model=ChatResponse)
