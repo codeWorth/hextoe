@@ -679,8 +679,13 @@ def post_chat(game_id: str, body: ChatMessageBody, session_id: str = Cookie(...)
             raise HTTPException(status_code=404)
         _require_player_in_game(game, user.user_id)
 
+        max_id = db.exec(
+            select(func.max(ChatMessage.chat_id)).where(ChatMessage.game_id == game_id)
+        ).one()
+        next_id = (max_id or 0) + 1
         msg = ChatMessage(
             game_id=game_id,
+            chat_id=next_id,
             message=body.message[:CHATMESSAGE_MAX],
             sender_id=user.user_id,
             sent_time=body.sent_time

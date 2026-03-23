@@ -138,18 +138,7 @@ let maxMoveId = -1;
 let winningMoves = null;
 let bestMove = null;
 
-function setGameState(val) {
-	const prevMoveCount = _gameState ? _gameState.moves.length : -1;
-	_gameState = val;
-	if (_gameState && _gameState.winner_id) {
-		winningMoves = findWinningMoves(_gameState.moves);
-	} else {
-		winningMoves = null;
-	}
-	render();
-	renderPlayerInfo();
-	renderMoveList();
-	renderTurnIndicator();
+function showBotMoveIfNeeded() {
 	const moveCountChanged = _gameState && _gameState.moves.length !== prevMoveCount;
 	const wantBestMove = _gameState && _gameState.moves.length > 0 && (!_gameState.winner_id || maxMoveId != -1);
 	if (moveCountChanged && wantBestMove && currentUser && currentUser.bot_assist) {
@@ -158,6 +147,21 @@ function setGameState(val) {
 			if (r.status === 200) { bestMove = r.data; render(); }
 		});
 	}
+}
+
+function setGameState(val) {
+	const prevMoveCount = _gameState ? _gameState.moves.length : -1;
+	_gameState = val;
+	if (_gameState && _gameState.winner_id) {
+		winningMoves = findWinningMoves(_gameState.moves);
+	} else {
+		winningMoves = null;
+	}
+    showBotMoveIfNeeded();
+	render();
+	renderPlayerInfo();
+	renderMoveList();
+	renderTurnIndicator();
 }
 
 async function fetchGameState() {
@@ -239,7 +243,7 @@ function renderMoveList() {
 		el.className = "move-item " + (move.p1 ? "move-p1" : "move-p2");
 		const label = move.p1 ? "X" : "O";
 		el.textContent = (i + 1) + ". " + label + " (" + move.a + ", " + move.r + ", " + move.c + ")";
-		el.onmouseenter = () => { maxMoveId = i; render(); };
+		el.onmouseenter = () => { maxMoveId = i; showBotMoveIfNeeded(); render(); };
         el.dataset.move_index = i;
     }
 
