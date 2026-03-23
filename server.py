@@ -487,7 +487,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
 
 
 @app.put("/api/game/{game_id}/rematch", response_model=str)
-def rematch_game(game_id: str, session_id: str = Cookie(...), response: Response):
+def rematch_game(game_id: str, response: Response, session_id: str = Cookie(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
         game = db.get(Game, game_id)
