@@ -147,7 +147,7 @@ def update_user(body: UpdateUserBody, response: Response, session_id: str = Cook
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
         if user.is_anon:
-            return
+            raise HTTPException(status_code=400)
         updated_uname_pass = body.username is not None or body.password is not None
         if body.username is not None:
             if len(body.username) > UNAME_MAX:
@@ -190,6 +190,7 @@ def get_current_user(session_id: str = Cookie(...)):
             "username": get_uuname_safe(user),
             "user_id": user.user_id,
             "bot_assist": user.bot_assist,
+            "is_anon": user.is_anon,
         }
 
 
@@ -204,6 +205,7 @@ def get_user(user_id: str):
             "username": get_uuname_safe(user),
             "user_id": user.user_id,
             "bot_assist": user.bot_assist,
+            "is_anon": user.is_anon,
         }
 
 

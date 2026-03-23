@@ -68,6 +68,7 @@ class UserProfileResponse(BaseModel):
     username: str
     user_id: str
     bot_assist: bool
+    is_anon: bool
 
 
 class GameListResponse(BaseModel):

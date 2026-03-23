@@ -65,7 +65,7 @@ function renderProfile() {
 	usernameEl.textContent = _username;
 
 	actionsEl.innerHTML = "";
-	if (currentUser && currentUser.user_id === profileUserId) {
+	if (currentUser && currentUser.user_id === profileUserId && !currentUser.is_anon) {
 		const toggleWrap = document.createElement("label");
 		toggleWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-light);cursor:pointer;";
 		const checkbox = document.createElement("input");
