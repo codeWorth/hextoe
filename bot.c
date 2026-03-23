@@ -202,7 +202,7 @@ mh_push(move_list_t *mh, uint64_t move, int score)
 		i = j;
 		j = j / 2;
 	}
-	mh->ml_moves[i].mhe_score = move;
+	mh->ml_moves[i].mhe_move = move;
 	mh->ml_moves[i].mhe_score = score;
 	mh->ml_len++;
 }
@@ -596,10 +596,10 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	int		i, sub_eval, look_moves, current_eval, best_score;
 	uint64_t	current_move, best_move;
 	move_list_t	impact_moves;
-	move_entry_t	impact_entries[MAX_EVAL_WIDTH];
+	move_entry_t	impact_entries[MAX_EVAL_WIDTH+1];
 	mm_entry_t	*kth_largest, *entry;
 
-	INIT_STACK(&impact_moves, impact_entries, MAX_EVAL_WIDTH);
+	INIT_STACK(&impact_moves, impact_entries, MAX_EVAL_WIDTH+1);
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
 	current_eval = evaluate_board(mm, candidate_moves);
 	if(current_eval == P1_WON || current_eval == P2_WON) {
@@ -632,33 +632,19 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 		}
 		goto eval_impact_moves;
 	}
-	// First find the kth largest element:
-	kth_largest = mm_entries_qselect(candidate_moves->mm_stack,
-					 candidate_moves->mm_stack_size,
-					 look_moves - 1);
-	// Now copy <look_moves> moves from candidate_moves if they have a large
-	// enough impact. We first copy those with larger impact than kth element,
-	// then those with impact == kth, because we don't want to miss any elements
-	// with high impact.
+	// Add K largest elements to the min heap
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];
-		if(entry->mme_value > kth_largest->mme_value) {
-			PUSH_STACK(&impact_moves, entry->mme_key,
-				   entry->mme_value);
+		if(impact_moves.ml_len >= impact_moves.ml_size - 1) {
+			mh_pop(&impact_moves);
 		}
+		mh_push(&impact_moves, entry->mme_key, entry->mme_value);
 	}
-	assert(impact_moves.ml_len < look_moves);
-	// Now copy with impact == kth until we fill enough slots.
-	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
-		entry = &candidate_moves->mm_stack[i];
-		if(entry->mme_value == kth_largest->mme_value) {
-			PUSH_STACK(&impact_moves, entry->mme_key,
-				   entry->mme_value);
-			if(impact_moves.ml_len >= look_moves) {
-				break;
-			}
-		}
-	}
+	// Min heap leaves a gap at the first element. To prepare for using it
+	// as a list instead, adjust for that.
+	impact_moves.ml_moves = impact_moves.ml_moves + 1;
+	impact_moves.ml_len--;
+	impact_moves.ml_size--;
 
 eval_impact_moves:
 	// Now iterate over every impact move.
