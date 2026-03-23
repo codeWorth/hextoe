@@ -14,6 +14,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from db_schemas import ChatMessage, Game, Move, User, UNAME_MAX, CHATMESSAGE_MAX
 from json_schemas import (
+    BotMoveResponse,
     ChatMessageBody,
     ChatResponse,
     GameStateResponse,
@@ -24,12 +25,14 @@ from json_schemas import (
     UserProfileResponse,
     GameListResponse,
 )
+import bot as _bot
 from util import (
     build_game_state,
     check_winner,
     get_current_player_id,
     get_uname_safe,
     get_uuname_safe,
+    is_player_one,
     new_id_str,
     new_session_ttl,
     hash_password,
@@ -421,6 +424,28 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
             select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
         ).all()
         return build_game_state(game, moves, user_id)
+
+
+@app.get("/api/game/{game_id}/bot", response_model=BotMoveResponse)
+def get_bot_move(game_id: str):
+    with Session(engine) as db:
+        game = db.get(Game, game_id)
+        if game is None:
+            raise HTTPException(status_code=404)
+        if game.is_complete:
+            raise HTTPException(status_code=400)
+
+        moves = db.exec(
+            select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
+        ).all()
+
+        move = _bot.evaluate_ahead([
+            {"a": int(m.a), "r": m.r, "c": m.c, "p1": is_player_one(m.move_index)}
+            for m in moves
+        ])
+        if move is None:
+            raise HTTPException(status_code=400)
+        return move
 
 
 # Submit a move. Update this player's last req time

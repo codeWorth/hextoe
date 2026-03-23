@@ -45,6 +45,12 @@ class MoveFailureResponse(BaseModel):
     failure_reason: str
 
 
+class BotMoveResponse(BaseModel):
+    a: int
+    r: int
+    c: int
+
+
 class GameListEntry(BaseModel):
     game_id: str
     is_complete: bool

@@ -91,8 +91,10 @@ let _gameState = null;
 let pollTimer = null;
 let maxMoveId = -1;
 let winningMoves = null;
+let bestMove = null;
 
 function setGameState(val) {
+	const prevMoveCount = _gameState ? _gameState.moves.length : -1;
 	_gameState = val;
 	if (_gameState && _gameState.winner_id) {
 		winningMoves = findWinningMoves(_gameState.moves);
@@ -103,6 +105,13 @@ function setGameState(val) {
 	renderPlayerInfo();
 	renderMoveList();
 	renderTurnIndicator();
+	const moveCountChanged = _gameState && _gameState.moves.length !== prevMoveCount;
+	const wantBestMove = _gameState && _gameState.moves.length > 0 && !_gameState.winner_id;
+	if (moveCountChanged && wantBestMove) {
+		api("GET", "/api/game/" + gameId + "/bot").then(r => {
+			if (r.status === 200) { bestMove = r.data; render(); }
+		});
+	}
 }
 
 async function fetchGameState() {
@@ -125,7 +134,7 @@ const cam = setupPanning(canvas, render, handleClick);
 
 function render() {
 	const moves = _gameState ? _gameState.moves : null;
-	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves, null);
+	renderHexGrid(canvas, ctx, cam.x, cam.y, moves, maxMoveId, winningMoves, bestMove);
 }
 
 function renderPlayerInfo() {
