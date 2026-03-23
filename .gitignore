@@ -20,3 +20,4 @@ venv/
 bot
 bot.dSYM/
 libbot.so
+bot_test

@@ -278,7 +278,7 @@ step_ur(arc_t *arc, arc_t *darc)
 {
 	darc->a = !arc->a;
 	darc->r = arc->r - (darc->a & 1);
-	darc->c = arc->c + (darc->a & 1);
+	darc->c = arc->c + (arc->a & 1);
 }
 
 int
@@ -603,18 +603,18 @@ main(int argc, char const *argv[])
 {
 	bool 	found_move;
 	int	best_a, best_r, best_c;
-	int 	as[27] = {0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0,
-			  1, 1, 1, 1, 1, 1, 1};
-	int 	rs[27] = {-1, -1, -1, 0, -1, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 0, 0,
-			  0, 1, -2, 1, 1, 1, 0, -1, 0, 1};
-	int 	cs[27] = {-2, -3, -4, -1, -5, -4, -3, -3, -2, -1, -2, -3, -2, -4,
-			  -4, 0, -5, -5, -5, -3, -6, -3, -4, 0, -1, 1, -3};
-	int 	is_p1s[27] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
-			      0, 1, 1, 0, 0, 1, 1, 0, 0};
+	int 	as[33] = {1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
+			  1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0};
+	int 	rs[33] = {-1, -1, 0, 0, 0, -1, -1, 1, 1, 2, -2, 0, -2, -1, -1, -1,
+			  -1, -2, -2, -2, -2, -2, -1, -2, -3, -3, -1, 0, 0, 0, 0, 1, 2};
+	int 	cs[33] = {0, 1, 2, 1, 1, 0, 1, 2, 2, 3, 0, 2, 0, -1, -2, -3, 2, -1,
+			  -2, 1, 1, -3, -2, -4, 0, 0, 2, 0, -1, 3, -2, 1, 1};
+	int 	is_p1s[33] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
+			      0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1};
 
 	struct timespec t0, t1;
 	clock_gettime(CLOCK_MONOTONIC, &t0);
-	found_move = evaluate_ahead(as, rs, cs, is_p1s, 27, &best_a, &best_r,
+	found_move = evaluate_ahead(as, rs, cs, is_p1s, 33, &best_a, &best_r,
 				    &best_c);
 	clock_gettime(CLOCK_MONOTONIC, &t1);
 	double elapsed = (t1.tv_sec - t0.tv_sec) * 1e3 +
