@@ -14,7 +14,7 @@ from sqlalchemy import and_, func, or_, update, not_
 from sqlalchemy.orm import aliased
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from db_schemas import ChatMessage, Game, Move, User, UNAME_MAX, CHATMESSAGE_MAX
+from db_schemas import BestMove, ChatMessage, Game, Move, User, UNAME_MAX, CHATMESSAGE_MAX
 from json_schemas import (
     BotMoveResponse,
     ChatMessageBody,
@@ -446,7 +446,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
 
 
 @app.get("/api/game/{game_id}/bot", response_model=BotMoveResponse)
-async def get_bot_move(game_id: str, session_id: str = Cookie(...)):
+async def get_bot_move(game_id: str, num_moves: int = Query(...), session_id: str = Cookie(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
         if not user.bot_assist:
@@ -457,9 +457,19 @@ async def get_bot_move(game_id: str, session_id: str = Cookie(...)):
         if game.is_complete:
             raise HTTPException(status_code=400)
 
-        move = await _bot.evaluate_ahead(game_id)
+        cached = db.get(BestMove, (game_id, num_moves))
+        if cached is not None:
+            return {"a": cached.a, "r": cached.r, "c": cached.c}
+
+        move = await _bot.evaluate_ahead(game_id, num_moves)
         if move is None:
             raise HTTPException(status_code=400)
+
+        db.add(BestMove(
+            game_id=game_id, move_index=num_moves,
+            a=move["a"], r=move["r"], c=move["c"],
+        ))
+        db.commit()
         return move
 
 
@@ -542,6 +552,9 @@ def undo_move(game_id: str, session_id: str = Cookie(...)):
         if len(moves) % 2 != 0 or user.user_id != current_player:
             raise HTTPException(status_code=400)
 
+        cached = db.get(BestMove, (game_id, len(moves)))
+        if cached is not None:
+            db.delete(cached)
         db.delete(moves[-1])
         db.commit()
         update_game_last_req(game_id, user.user_id, db)

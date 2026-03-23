@@ -109,7 +109,7 @@ function setGameState(val) {
 	const wantBestMove = _gameState && _gameState.moves.length > 0 && !_gameState.winner_id;
 	if (moveCountChanged && wantBestMove && currentUser && currentUser.bot_assist) {
         bestMove = null;
-		api("GET", "/api/game/" + gameId + "/bot").then(r => {
+		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (maxMoveId + 1)).then(r => {
 			if (r.status === 200) { bestMove = r.data; render(); }
 		});
 	}

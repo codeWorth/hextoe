@@ -53,6 +53,14 @@ class Move(SQLModel, table=True):
     c: int   # column
 
 
+class BestMove(SQLModel, table=True):
+    game_id: str = Field(max_length=ID_LEN, foreign_key="game.game_id", primary_key=True)
+    move_index: int = Field(primary_key=True)
+    a: int
+    r: int
+    c: int
+
+
 class ChatMessage(SQLModel, table=True):
     game_id: str = Field(max_length=ID_LEN, foreign_key="game.game_id", primary_key=True)
     chat_id: int = Field(primary_key=True)

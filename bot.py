@@ -34,31 +34,38 @@ def proc_eval_task(engine):
     with _lock:
         if len(tasks) == 0:
             return
-        game_id = min(tasks.items(), key=lambda item: item[1].creation_time)[0]
-        eval_task = tasks.pop(game_id)
+        task_key = min(tasks.items(), key=lambda item: item[1].creation_time)[0]
+        game_id = task_key[0]
+        num_moves = task_key[1]
+        eval_task = tasks.pop(task_key)
 
     with Session(engine) as db:
         moves = db.exec(
             select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
         ).all()
-        move = do_evaluate_ahead([
+        moves_list = [
             {"a": int(m.a), "r": m.r, "c": m.c, "p1": is_player_one(m.move_index)}
             for m in moves
-        ])
+        ]
+        if num_moves > 0:
+            moves_list = moves_list[:num_moves]
+
+        move = do_evaluate_ahead(moves_list)
         _loop.call_soon_threadsafe(eval_task.future_eval.set_result, move)
 
 
-# Queue up an evaluation for the given game_id
-def evaluate_ahead(game_id):
+# Queue up an evaluation for the given game_id and num_moves
+def evaluate_ahead(game_id, num_moves):
+    key = (game_id, num_moves)
     with _lock:
-        eval_task = tasks.get(game_id)
+        eval_task = tasks.get(key)
         if eval_task is not None:
             return eval_task.future_eval
         eval_task = SimpleNamespace(
             future_eval=_loop.create_future(),
             creation_time=time.time(),
         )
-        tasks[game_id] = eval_task
+        tasks[key] = eval_task
         return eval_task.future_eval
 
 
