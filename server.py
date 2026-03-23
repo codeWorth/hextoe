@@ -1,5 +1,7 @@
 import asyncio
 import random
+import time
+import threading
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Union, Optional
@@ -69,10 +71,18 @@ async def _prune_loop():
             prune_afk_games(db)
 
 
+def _eval_loop():
+    while True:
+        time.sleep(1)
+        _bot.proc_eval_task(engine)
+
+
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
     asyncio.get_event_loop().create_task(_prune_loop())
+    _bot._loop = asyncio.get_event_loop()
+    threading.Thread(target=_eval_loop, daemon=True).start()
 
 
 def _set_session_cookie(response: Response, session_id: str, session_ttl: datetime):
@@ -427,7 +437,7 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
 
 
 @app.get("/api/game/{game_id}/bot", response_model=BotMoveResponse)
-def get_bot_move(game_id: str):
+async def get_bot_move(game_id: str):
     with Session(engine) as db:
         game = db.get(Game, game_id)
         if game is None:
@@ -435,14 +445,7 @@ def get_bot_move(game_id: str):
         if game.is_complete:
             raise HTTPException(status_code=400)
 
-        moves = db.exec(
-            select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
-        ).all()
-
-        move = _bot.evaluate_ahead([
-            {"a": int(m.a), "r": m.r, "c": m.c, "p1": is_player_one(m.move_index)}
-            for m in moves
-        ])
+        move = await _bot.evaluate_ahead(game_id)
         if move is None:
             raise HTTPException(status_code=400)
         return move

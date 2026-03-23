@@ -1,5 +1,18 @@
 import ctypes
 import os
+import asyncio
+import time
+import threading
+from types import SimpleNamespace
+
+from sqlmodel import Session, select
+
+from db_schemas import Move
+from util import is_player_one
+
+tasks = {}
+_lock = threading.Lock()
+_loop = None
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 _lib = ctypes.cdll.LoadLibrary(os.path.join(_dir, "libbot.so"))
@@ -17,7 +30,39 @@ _lib.evaluate_ahead.argtypes = [
 _lib.evaluate_ahead.restype = ctypes.c_bool
 
 
-def evaluate_ahead(moves):
+def proc_eval_task(engine):
+    with _lock:
+        if len(tasks) == 0:
+            return
+        game_id = min(tasks.items(), key=lambda item: item[1].creation_time)[0]
+        eval_task = tasks.pop(game_id)
+
+    with Session(engine) as db:
+        moves = db.exec(
+            select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
+        ).all()
+        move = do_evaluate_ahead([
+            {"a": int(m.a), "r": m.r, "c": m.c, "p1": is_player_one(m.move_index)}
+            for m in moves
+        ])
+        _loop.call_soon_threadsafe(eval_task.future_eval.set_result, move)
+
+
+# Queue up an evaluation for the given game_id
+def evaluate_ahead(game_id):
+    with _lock:
+        eval_task = tasks.get(game_id)
+        if eval_task is not None:
+            return eval_task.future_eval
+        eval_task = SimpleNamespace(
+            future_eval=_loop.create_future(),
+            creation_time=time.time(),
+        )
+        tasks[game_id] = eval_task
+        return eval_task.future_eval
+
+
+def do_evaluate_ahead(moves):
     """Run minimax evaluation on the given moves.
 
     moves: list of dicts with keys "a", "r", "c", "p1"
