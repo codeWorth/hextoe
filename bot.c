@@ -188,48 +188,51 @@ ml_sort(move_list_t *ml) {
 }
 
 // Also also courtesy of rosetta code. Min heap push and pop
-// void push (uint64_t *moves_heap, int *values_heap, uint64_t move, int value)
-// {
-// 	assert()
-//     if (h->len + 1 >= h->size) {
-//         h->size = h->size ? h->size * 2 : 4;
-//         h->nodes = (node_t *)realloc(h->nodes, h->size * sizeof (node_t));
-//     }
-//     int i = h->len + 1;
-//     int j = i / 2;
-//     while (i > 1 && h->nodes[j].priority > priority) {
-//         h->nodes[i] = h->nodes[j];
-//         i = j;
-//         j = j / 2;
-//     }
-//     h->nodes[i].priority = priority;
-//     h->nodes[i].data = data;
-//     h->len++;
-// }
+void
+mh_push(move_list_t *mh, uint64_t move, int score)
+{
+	int	i, j;
 
-// char *pop (heap_t *h) {
-//     int i, j, k;
-//     if (!h->len) {
-//         return NULL;
-//     }
-//     char *data = h->nodes[1].data;
-//     h->nodes[1] = h->nodes[h->len];
-//     h->len--;
-//     i = 1;
-//     while (i!=h->len+1) {
-//         k = h->len+1;
-//         j = 2 * i;
-//         if (j <= h->len && h->nodes[j].priority < h->nodes[k].priority) {
-//             k = j;
-//         }
-//         if (j + 1 <= h->len && h->nodes[j + 1].priority < h->nodes[k].priority) {
-//             k = j + 1;
-//         }
-//         h->nodes[i] = h->nodes[k];
-//         i = k;
-//     }
-//     return data;
-// }
+	assert(mh->ml_len < mh->ml_size);
+	i = mh->ml_len + 1;
+	j = i / 2;
+	while(i > 1 && mh->ml_moves[j].mhe_score > score) {
+		mh->ml_moves[i].mhe_move = mh->ml_moves[j].mhe_move;
+		mh->ml_moves[i].mhe_score = mh->ml_moves[j].mhe_score;
+		i = j;
+		j = j / 2;
+	}
+	mh->ml_moves[i].mhe_score = move;
+	mh->ml_moves[i].mhe_score = score;
+	mh->ml_len++;
+}
+
+uint64_t
+mh_pop(move_list_t *mh) {
+	int		i, j, k;
+	uint64_t	move;
+
+	assert(mh->ml_len > 0);
+	move = mh->ml_moves[1].mhe_move;
+	mh->ml_moves[1].mhe_move = mh->ml_moves[mh->ml_len].mhe_move;
+	mh->ml_moves[1].mhe_score = mh->ml_moves[mh->ml_len].mhe_score;
+	mh->ml_len--;
+	i = 1;
+	while(i != mh->ml_len + 1) {
+		k = mh->ml_len + 1;
+		j = 2 * i;
+		if (j <= mh->ml_len && mh->ml_moves[j].mhe_score < mh->ml_moves[k].mhe_score) {
+			k = j;
+		}
+		if (j + 1 <= mh->ml_len && mh->ml_moves[j + 1].mhe_score < mh->ml_moves[k].mhe_score) {
+			k = j + 1;
+		}
+		mh->ml_moves[i].mhe_move = mh->ml_moves[k].mhe_move;
+		mh->ml_moves[i].mhe_score = mh->ml_moves[k].mhe_score;
+		i = k;
+	}
+	return move;
+}
 
 uint64_t
 mm_make_key(arc_t *arc)
