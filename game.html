@@ -163,7 +163,7 @@ function showBotMoveIfNeeded(prevMoveCount, prevMaxMoveId) {
     // then the response is likely out of date which what the UI currently wants.
     const curMaxMoveId = maxMoveId;
 
-	if ((moveCountChanged || maxMoveChanged) && canFindBestMove && currentUser && currentUser.bot_assist) {
+	if ((moveCountChanged || maxMoveChanged || bestMove === null) && canFindBestMove && currentUser && currentUser.bot_assist) {
         bestMove = null;
 		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (curMaxMoveId + 1)).then(r => {
 			if (r.status === 200 && curMaxMoveId == maxMoveId) { bestMove = r.data; render(); }
