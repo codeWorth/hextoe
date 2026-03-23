@@ -193,6 +193,17 @@ async function fetchGameState() {
 	if (r.status === 200) setGameState(r.data);
 }
 
+async function pollGameState() {
+	if (!_gameState) {
+		await fetchGameState();
+		return;
+	}
+	const r = await api("GET", "/api/game/" + gameId + "/moves");
+	if (r.status === 200 && r.data !== _gameState.moves.length) {
+		await fetchGameState();
+	}
+}
+
 async function makeMove(a, r, c) {
 	if (!_gameState || !_gameState.is_your_turn) return;
 	const resp = await api("POST", "/api/game/" + gameId, { body: { a, r, c } });
@@ -492,7 +503,7 @@ async function init() {
 	await loadCurrentUser();
 	renderHeader(onLogout);
 	await fetchGameState();
-	pollTimer = setInterval(fetchGameState, 5000);
+	pollTimer = setInterval(pollGameState, 500);
 }
 init();
 </script>

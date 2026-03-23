@@ -481,6 +481,15 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
         return build_game_state(game, moves, user_id)
 
 
+@app.get("/api/game/{game_id}/moves", response_model=int)
+def get_move_count(game_id: str):
+    with Session(engine) as db:
+        count = db.exec(
+            select(func.count(Move.move_index)).where(Move.game_id == game_id)
+        ).one()
+        return count
+
+
 @app.get("/api/game/{game_id}/bot", response_model=BotMoveResponse)
 async def get_bot_move(game_id: str, num_moves: int = Query(...), session_id: str = Cookie(...)):
     with Session(engine) as db:
