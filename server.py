@@ -73,7 +73,7 @@ async def _prune_loop():
 
 def _eval_loop():
     while True:
-        time.sleep(1)
+        time.sleep(0.25)
         _bot.proc_eval_task(engine)
 
 
