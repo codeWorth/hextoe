@@ -63,9 +63,9 @@
 	score;				\
 })
 
-#define PUSH_MOVE_STACK(stack, sz, mme) ({	\
-	(stack)[(sz)] = (mme)->mme_key;		\
-	(sz)++;					\
+#define PUSH_STACK(stack, sz, val) ({	\
+	(stack)[(sz)] = val;		\
+	(sz)++;				\
 })
 
 typedef struct mm_entry {
@@ -151,18 +151,21 @@ mm_entries_qselect(mm_entry_t *entries, int len, int k)
 // Also courtesy of rosetta code
 
 void
-moves_sort(uint64_t *moves, int len) {
-	int		i, j;
+moves_sort(uint64_t *moves, int *values, int len) {
+	int		i, j, value;
 	uint64_t	move;
 
 	for(size_t i = 1; i < len; ++i) {
 		move = moves[i];
+		value = values[i];
 		j = i;
-		while((j > 0) && (move > moves[j - 1])) {
+		while((j > 0) && (value > values[j - 1])) {
 			moves[j] = moves[j - 1];
+			values[j] = values[j - 1];
 			--j;
 		}
 		moves[j] = move;
+		values[j] = value;
 	}
 }
 
@@ -529,6 +532,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	int		im_count;
 	uint64_t	current_move, best_move;
 	uint64_t	impact_moves[MAX_EVAL_WIDTH];
+	int		impact_values[MAX_EVAL_WIDTH];
 	mm_entry_t	*kth_largest, *entry;
 
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
@@ -559,7 +563,8 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 		// First copy every move over though.
 		for(i = 0; i < look_moves; i++) {
 			entry = &candidate_moves->mm_stack[i];
-			PUSH_MOVE_STACK(impact_moves, im_count, entry);
+			impact_values[im_count] = entry->mme_value;
+			PUSH_STACK(impact_moves, im_count, entry->mme_key);
 		}
 		goto eval_impact_moves;
 	}
@@ -574,7 +579,8 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];
 		if(entry->mme_value > kth_largest->mme_value) {
-			PUSH_MOVE_STACK(impact_moves, im_count, entry);
+			impact_values[im_count] = entry->mme_value;
+			PUSH_STACK(impact_moves, im_count, entry->mme_key);
 		}
 	}
 	assert(im_count < look_moves);
@@ -582,7 +588,8 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];
 		if(entry->mme_value == kth_largest->mme_value) {
-			PUSH_MOVE_STACK(impact_moves, im_count, entry);
+			impact_values[im_count] = entry->mme_value;
+			PUSH_STACK(impact_moves, im_count, entry->mme_key);
 			if(im_count >= look_moves) {
 				break;
 			}

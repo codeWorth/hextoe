@@ -451,7 +451,7 @@ sl_get(int a, int r, int c)
 // score_line from the tile stepping right:
 //   prev (left) is empty -> not terminated
 //   next (right) is empty -> end of line, length 1
-//   score = 1^3 * 2 * 1 = 2 (p1, unterminated, cubed)
+//   score = L1_SCORE * 1 * 2 = 2 (p1, unterminated)
 //   returns 2 candidate moves (prev and next)
 TEST(test_score_line_single_tile_open) {
 	sl_reset();
@@ -465,12 +465,12 @@ TEST(test_score_line_single_tile_open) {
 				&move1, &move2, step_r, step_l);
 
 	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, 2);  // 1^3 * 1 * 2 = 2
+	ASSERT_EQ(score, 2);  // L1_SCORE * 1 * 2 = 2
 }
 
 // Single tile with opponent on the left.
 // Terminated on prev side, open on right.
-// score = 1^3 * 1 = 1
+// score = L1_SCORE * 1 = 1
 // returns 1 candidate move (next)
 TEST(test_score_line_single_tile_terminated) {
 	sl_reset();
@@ -485,14 +485,14 @@ TEST(test_score_line_single_tile_terminated) {
 				&move1, &move2, step_r, step_l);
 
 	ASSERT_EQ(mcount, 1);
-	ASSERT_EQ(score, 1);  // 1^3 * 1 = 1
+	ASSERT_EQ(score, 1);  // L1_SCORE * 1 = 1
 }
 
 // Two p1 tiles in a row. Scoring from the left end (start of line).
 // (0,0,0) -> (0,0,1) -> empty
 // prev of (0,0,0) is (0,0,-1) = empty -> not terminated
 // stepping right: (0,0,1) is same player, (0,0,2) is empty
-// length = 2, score = 2^3 * 1 * 2 = 16 (unterminated)
+// length = 2, score = L2_SCORE * 1 * 2 = 16 (unterminated)
 TEST(test_score_line_two_in_row) {
 	sl_reset();
 	sl_add(0, 0, 0, 1);
@@ -506,7 +506,7 @@ TEST(test_score_line_two_in_row) {
 				&move1, &move2, step_r, step_l);
 
 	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, 16);  // 2^3 * 2 = 16
+	ASSERT_EQ(score, 16);  // L2_SCORE * 2 = 16
 }
 
 // Scoring from the second tile (not the line start) should return 0
@@ -528,7 +528,7 @@ TEST(test_score_line_not_line_start) {
 }
 
 // P2 single tile, open both sides.
-// score = 1^3 * (-1) * 2 = -2
+// score = L1_SCORE * (-1) * 2 = -2
 TEST(test_score_line_p2) {
 	sl_reset();
 	sl_add(0, 0, 0, 0);
@@ -541,7 +541,7 @@ TEST(test_score_line_p2) {
 				&move1, &move2, step_r, step_l);
 
 	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, -2);  // 1^3 * -1 * 2 = -2
+	ASSERT_EQ(score, -2);  // L1_SCORE * -1 * 2 = -2
 }
 
 // Blocked on both sides: opponent left, opponent right.
@@ -566,7 +566,7 @@ TEST(test_score_line_fully_blocked) {
 
 // Open left, opponent right after 1 tile.
 // Not terminated on left, opponent at i=0 on right.
-// score = 1^3 * 1 = 1, 1 move (prev)
+// score = L1_SCORE * 1 = 1, 1 move (prev)
 TEST(test_score_line_open_left_blocked_right) {
 	sl_reset();
 	sl_add(0, 0, 0, 1);
@@ -580,7 +580,7 @@ TEST(test_score_line_open_left_blocked_right) {
 				&move1, &move2, step_r, step_l);
 
 	ASSERT_EQ(mcount, 1);
-	ASSERT_EQ(score, 1);  // 1^3 * 1 = 1
+	ASSERT_EQ(score, 1);  // L1_SCORE * 1 = 1
 }
 
 // 6 in a row = P1_WON
@@ -637,9 +637,9 @@ TEST(test_score_line_diagonal) {
 	int mcount = score_line(&sl_mm, entry, &pos, &score,
 				&move1, &move2, step_dr, step_ul);
 
-	// 3 tiles, open both sides: score = 3^3 * 1 * 2 = 54
+	// 3 tiles, open both sides: score = L3_SCORE * 1 * 2 = 60
 	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, 54);
+	ASSERT_EQ(score, 60);
 }
 
 // Verify candidate move keys decode to sensible positions
@@ -669,6 +669,79 @@ TEST(test_score_line_candidate_positions) {
 	ASSERT_EQ(m2.a, 0);
 	ASSERT_EQ(m2.r, 0);
 	ASSERT_EQ(m2.c, 1);
+}
+
+/*
+ * moves_sort tests
+ *
+ * moves_sort sorts uint64_t array in descending order via insertion sort.
+ */
+
+TEST(test_moves_sort_empty)
+{
+	uint64_t arr[1] = {42};
+	moves_sort(arr, 0);
+	ASSERT_EQ(arr[0], 42); /* untouched */
+}
+
+TEST(test_moves_sort_single)
+{
+	uint64_t arr[] = {7};
+	moves_sort(arr, 1);
+	ASSERT_EQ(arr[0], 7);
+}
+
+TEST(test_moves_sort_already_sorted)
+{
+	uint64_t arr[] = {50, 40, 30, 20, 10};
+	moves_sort(arr, 5);
+	ASSERT_EQ(arr[0], 50);
+	ASSERT_EQ(arr[1], 40);
+	ASSERT_EQ(arr[2], 30);
+	ASSERT_EQ(arr[3], 20);
+	ASSERT_EQ(arr[4], 10);
+}
+
+TEST(test_moves_sort_reverse_sorted)
+{
+	uint64_t arr[] = {1, 2, 3, 4, 5};
+	moves_sort(arr, 5);
+	ASSERT_EQ(arr[0], 5);
+	ASSERT_EQ(arr[1], 4);
+	ASSERT_EQ(arr[2], 3);
+	ASSERT_EQ(arr[3], 2);
+	ASSERT_EQ(arr[4], 1);
+}
+
+TEST(test_moves_sort_random_order)
+{
+	uint64_t arr[] = {30, 10, 50, 20, 40};
+	moves_sort(arr, 5);
+	ASSERT_EQ(arr[0], 50);
+	ASSERT_EQ(arr[1], 40);
+	ASSERT_EQ(arr[2], 30);
+	ASSERT_EQ(arr[3], 20);
+	ASSERT_EQ(arr[4], 10);
+}
+
+TEST(test_moves_sort_duplicates)
+{
+	uint64_t arr[] = {5, 3, 5, 1, 3};
+	moves_sort(arr, 5);
+	ASSERT_EQ(arr[0], 5);
+	ASSERT_EQ(arr[1], 5);
+	ASSERT_EQ(arr[2], 3);
+	ASSERT_EQ(arr[3], 3);
+	ASSERT_EQ(arr[4], 1);
+}
+
+TEST(test_moves_sort_all_equal)
+{
+	uint64_t arr[] = {99, 99, 99};
+	moves_sort(arr, 3);
+	ASSERT_EQ(arr[0], 99);
+	ASSERT_EQ(arr[1], 99);
+	ASSERT_EQ(arr[2], 99);
 }
 
 int
@@ -710,6 +783,15 @@ main(int argc, char const *argv[])
 	RUN(test_qselect_last);
 	RUN(test_qselect_single);
 	RUN(test_qselect_equal_values);
+
+	printf("\nmoves_sort:\n");
+	RUN(test_moves_sort_empty);
+	RUN(test_moves_sort_single);
+	RUN(test_moves_sort_already_sorted);
+	RUN(test_moves_sort_reverse_sorted);
+	RUN(test_moves_sort_random_order);
+	RUN(test_moves_sort_duplicates);
+	RUN(test_moves_sort_all_equal);
 
 	printf("\nscore_line:\n");
 	RUN(test_score_line_single_tile_open);
