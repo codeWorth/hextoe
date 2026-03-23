@@ -138,7 +138,7 @@ let maxMoveId = -1;
 let winningMoves = null;
 let bestMove = null;
 
-function showBotMoveIfNeeded() {
+function showBotMoveIfNeeded(prevMoveCount) {
 	const moveCountChanged = _gameState && _gameState.moves.length !== prevMoveCount;
 	const wantBestMove = _gameState && _gameState.moves.length > 0 && (!_gameState.winner_id || maxMoveId != -1);
 	if (moveCountChanged && wantBestMove && currentUser && currentUser.bot_assist) {
@@ -157,7 +157,7 @@ function setGameState(val) {
 	} else {
 		winningMoves = null;
 	}
-    showBotMoveIfNeeded();
+    showBotMoveIfNeeded(prevMoveCount);
 	render();
 	renderPlayerInfo();
 	renderMoveList();
@@ -243,7 +243,7 @@ function renderMoveList() {
 		el.className = "move-item " + (move.p1 ? "move-p1" : "move-p2");
 		const label = move.p1 ? "X" : "O";
 		el.textContent = (i + 1) + ". " + label + " (" + move.a + ", " + move.r + ", " + move.c + ")";
-		el.onmouseenter = () => { maxMoveId = i; showBotMoveIfNeeded(); render(); };
+		el.onmouseenter = () => { maxMoveId = i; showBotMoveIfNeeded(-1); render(); };
         el.dataset.move_index = i;
     }
 
