@@ -143,10 +143,11 @@ function showBotMoveIfNeeded(prevMoveCount) {
 	const moveCountChanged = _gameState && _gameState.moves.length !== prevMoveCount;
 	const isLastMove = maxMoveId === _gameState.moves.length - 1;
 	const wantBestMove = _gameState && _gameState.moves.length > 0 && !isLastMove && (!_gameState.winner_id || maxMoveId != -1);
+    const curMaxMoveId = maxMoveId;
 	if (moveCountChanged && wantBestMove && currentUser && currentUser.bot_assist) {
         bestMove = null;
-		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (maxMoveId + 1)).then(r => {
-			if (r.status === 200) { bestMove = r.data; render(); }
+		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (curMaxMoveId + 1)).then(r => {
+			if (r.status === 200 && curMaxMoveId == maxMoveId) { bestMove = r.data; render(); }
 		});
 	}
 }
