@@ -598,7 +598,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 
 eval_impact_moves:
 	// Now iterate over every impact move.
-	moves_sort(impact_moves, im_count);
+	moves_sort(impact_moves, impact_values, im_count);
 	for(i = 0; i < im_count; i++) {
 		current_move = impact_moves[i];
 		mm_insert(mm, current_move, is_p1);
