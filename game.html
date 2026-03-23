@@ -95,7 +95,7 @@
 	<div class="game-container">
 		<div class="canvas-area">
 			<div class="canvas-wrap"><canvas id="canvas"></canvas></div>
-			<button class="recenter-btn chat-btn" onclick="toggleChat();" title="Chat">
+			<button class="recenter-btn chat-btn" id="chat-btn" onclick="toggleChat();" title="Chat" style="display:none;">
                 <span>&#x1F4AC;</span>
             </button>
 			<button class="recenter-btn" onclick="cam.reset();" title="Re-center">
@@ -294,6 +294,7 @@ function renderTurnIndicator() {
 		_gameState.player_id_1 === currentUser.user_id ||
         _gameState.player_id_2 === currentUser.user_id
 	);
+	document.getElementById("chat-btn").style.display = isPlayer ? "" : "none";
 	forfeitBtn.style.display = inProgress ? "" : "none";
 	if (_gameState.winner_id) {
 		turnEl.textContent = "Game Over";
