@@ -25,7 +25,7 @@
 #define P1_WON		262144
 #define P2_WON		-262144
 
-#ifdef EVAL_DEFAULTS
+#ifndef EVAL_CUSTOM
 #define MAX_EVAL_DEPTH	9
 #define MAX_EVAL_WIDTH	15
 #define MIN_EVAL_WIDTH	4
@@ -63,9 +63,17 @@
 	score;				\
 })
 
-#define PUSH_STACK(stack, sz, val) ({	\
-	(stack)[(sz)] = val;		\
-	(sz)++;				\
+#define PUSH_STACK(ml, move, score) ({				\
+	assert((ml)->ml_len < (ml)->ml_size);			\
+	(ml)->ml_moves[((ml)->ml_len)].mhe_move = (move);	\
+	(ml)->ml_moves[((ml)->ml_len)].mhe_score = (score);	\
+	(ml)->ml_len++;						\
+})
+
+#define INIT_STACK(ml, arr, size) ({	\
+	(ml)->ml_moves = (arr);		\
+	(ml)->ml_size = (size);		\
+	(ml)->ml_len = 0;		\
 })
 
 typedef struct mm_entry {
@@ -85,6 +93,17 @@ typedef struct arc {
 	int	r;
 	int	c;
 } arc_t;
+
+typedef struct move_entry {
+	uint64_t	mhe_move;
+	int		mhe_score;
+} move_entry_t;
+
+typedef struct move_list {
+	move_entry_t	*ml_moves;
+	int		ml_len;
+	int		ml_size;
+} move_list_t;
 
 uint64_t
 splitmix64(uint64_t key) {
@@ -126,7 +145,7 @@ swap_entries(mm_entry_t *entries, int i, int j)
 	entries[j].mme_value = tmp_mme_value;
 }
 
-// Courtesy of rosetta code
+// Courtesy of rosetta code. QuickSelect algorithm. Modifies the given array.
 mm_entry_t *
 mm_entries_qselect(mm_entry_t *entries, int len, int k)
 {
@@ -148,26 +167,69 @@ mm_entries_qselect(mm_entry_t *entries, int len, int k)
 }
 
 
-// Also courtesy of rosetta code
-
+// Also courtesy of rosetta code. In place list insertion sort, descending order.
 void
-moves_sort(uint64_t *moves, int *values, int len) {
-	int		i, j, value;
-	uint64_t	move;
+ml_sort(move_list_t *ml) {
+	int		i, j, len = ml->ml_len;
+	move_entry_t	e;
 
 	for(size_t i = 1; i < len; ++i) {
-		move = moves[i];
-		value = values[i];
+		e.mhe_move = ml->ml_moves[i].mhe_move;
+		e.mhe_score = ml->ml_moves[i].mhe_score;
 		j = i;
-		while((j > 0) && (value > values[j - 1])) {
-			moves[j] = moves[j - 1];
-			values[j] = values[j - 1];
+		while((j > 0) && (e.mhe_score > ml->ml_moves[j - 1].mhe_score)) {
+			ml->ml_moves[j].mhe_move = ml->ml_moves[j - 1].mhe_move;
+			ml->ml_moves[j].mhe_score = ml->ml_moves[j - 1].mhe_score;
 			--j;
 		}
-		moves[j] = move;
-		values[j] = value;
+		ml->ml_moves[j].mhe_move = e.mhe_move;
+		ml->ml_moves[j].mhe_score = e.mhe_score;
 	}
 }
+
+// Also also courtesy of rosetta code. Min heap push and pop
+// void push (uint64_t *moves_heap, int *values_heap, uint64_t move, int value)
+// {
+// 	assert()
+//     if (h->len + 1 >= h->size) {
+//         h->size = h->size ? h->size * 2 : 4;
+//         h->nodes = (node_t *)realloc(h->nodes, h->size * sizeof (node_t));
+//     }
+//     int i = h->len + 1;
+//     int j = i / 2;
+//     while (i > 1 && h->nodes[j].priority > priority) {
+//         h->nodes[i] = h->nodes[j];
+//         i = j;
+//         j = j / 2;
+//     }
+//     h->nodes[i].priority = priority;
+//     h->nodes[i].data = data;
+//     h->len++;
+// }
+
+// char *pop (heap_t *h) {
+//     int i, j, k;
+//     if (!h->len) {
+//         return NULL;
+//     }
+//     char *data = h->nodes[1].data;
+//     h->nodes[1] = h->nodes[h->len];
+//     h->len--;
+//     i = 1;
+//     while (i!=h->len+1) {
+//         k = h->len+1;
+//         j = 2 * i;
+//         if (j <= h->len && h->nodes[j].priority < h->nodes[k].priority) {
+//             k = j;
+//         }
+//         if (j + 1 <= h->len && h->nodes[j + 1].priority < h->nodes[k].priority) {
+//             k = j + 1;
+//         }
+//         h->nodes[i] = h->nodes[k];
+//         i = k;
+//     }
+//     return data;
+// }
 
 uint64_t
 mm_make_key(arc_t *arc)
@@ -529,12 +591,12 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 {
 	bool		is_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score;
-	int		im_count;
 	uint64_t	current_move, best_move;
-	uint64_t	impact_moves[MAX_EVAL_WIDTH];
-	int		impact_values[MAX_EVAL_WIDTH];
+	move_list_t	impact_moves;
+	move_entry_t	impact_entries[MAX_EVAL_WIDTH];
 	mm_entry_t	*kth_largest, *entry;
 
+	INIT_STACK(&impact_moves, impact_entries, MAX_EVAL_WIDTH);
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
 	current_eval = evaluate_board(mm, candidate_moves);
 	if(current_eval == P1_WON || current_eval == P2_WON) {
@@ -555,7 +617,6 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	// Now we need to go through the moves and evaluate them in order. The moves
 	// are labeled with a score of how impactful they are. We simply go through them
 	// in order of impact, and see which gives us the best evaluation.
-	im_count = 0;
 	look_moves = look_moves_at_depth(depth);
 	if(look_moves > candidate_moves->mm_stack_size) {
 		look_moves = candidate_moves->mm_stack_size;
@@ -563,8 +624,8 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 		// First copy every move over though.
 		for(i = 0; i < look_moves; i++) {
 			entry = &candidate_moves->mm_stack[i];
-			impact_values[im_count] = entry->mme_value;
-			PUSH_STACK(impact_moves, im_count, entry->mme_key);
+			PUSH_STACK(&impact_moves, entry->mme_key,
+				   entry->mme_value);
 		}
 		goto eval_impact_moves;
 	}
@@ -579,18 +640,18 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];
 		if(entry->mme_value > kth_largest->mme_value) {
-			impact_values[im_count] = entry->mme_value;
-			PUSH_STACK(impact_moves, im_count, entry->mme_key);
+			PUSH_STACK(&impact_moves, entry->mme_key,
+				   entry->mme_value);
 		}
 	}
-	assert(im_count < look_moves);
+	assert(impact_moves.ml_len < look_moves);
 	// Now copy with impact == kth until we fill enough slots.
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];
 		if(entry->mme_value == kth_largest->mme_value) {
-			impact_values[im_count] = entry->mme_value;
-			PUSH_STACK(impact_moves, im_count, entry->mme_key);
-			if(im_count >= look_moves) {
+			PUSH_STACK(&impact_moves, entry->mme_key,
+				   entry->mme_value);
+			if(impact_moves.ml_len >= look_moves) {
 				break;
 			}
 		}
@@ -598,9 +659,9 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 
 eval_impact_moves:
 	// Now iterate over every impact move.
-	moves_sort(impact_moves, impact_values, im_count);
-	for(i = 0; i < im_count; i++) {
-		current_move = impact_moves[i];
+	ml_sort(&impact_moves);
+	for(i = 0; i < impact_moves.ml_len; i++) {
+		current_move = impact_moves.ml_moves[i].mhe_move;
 		mm_insert(mm, current_move, is_p1);
 		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
 					     alpha, beta, NULL);
