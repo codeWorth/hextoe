@@ -167,10 +167,14 @@ swap_entries(mm_entry_t *entries, int i, int j)
 	mm_entry_t	tmp_entry;
 
 	MM_ENTRY_SET(&tmp_entry, &entries[i]);
-	entries[i].mme_key = entries[j].mme_key;
-	entries[i].mme_value = entries[j].mme_value;
-	entries[j].mme_key = tmp_entry.mme_key;
-	entries[j].mme_value = tmp_entry.mme_value;
+
+	entries[i].mme_next->mme_prev = &entries[j];
+	entries[i].mme_prev->mme_next = &entries[j];
+	MM_ENTRY_SET(&entries[i], &entries[j]);
+
+	entries[j].mme_next->mme_prev = &entries[i];
+	entries[j].mme_prev->mme_next = &entries[i];
+	MM_ENTRY_SET(&entries[j], &tmp_entry);
 }
 
 // Courtesy of rosetta code. QuickSelect algorithm. Modifies the given array.
