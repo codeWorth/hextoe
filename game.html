@@ -58,6 +58,7 @@
 
 		.chat-btn { bottom: 28px; right: 72px; }
 		.chat-btn span { font-size: 16px; }
+		.chat-btn.active { background: rgba(74, 74, 74, 1); color: var(--text); }
 
 		.chat-panel {
 			flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden;
@@ -372,6 +373,7 @@ let chatPollTimer = null;
 
 function toggleChat() {
 	chatOpen = !chatOpen;
+	document.querySelector(".chat-btn").classList.toggle("active", chatOpen);
 	document.getElementById("move-section").style.display = chatOpen ? "none" : "";
 	document.getElementById("chat-section").style.display = chatOpen ? "" : "none";
 	if (chatOpen) {

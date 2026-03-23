@@ -454,7 +454,7 @@ async def get_bot_move(game_id: str, num_moves: int = Query(...), session_id: st
         game = db.get(Game, game_id)
         if game is None:
             raise HTTPException(status_code=404)
-        if game.is_complete:
+        if game.is_complete and num_moves == 0:
             raise HTTPException(status_code=400)
 
         cached = db.get(BestMove, (game_id, num_moves))
