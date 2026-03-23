@@ -417,25 +417,29 @@ def create_private_game(session_id: str = Cookie(...)):
         return game.game_id
 
 
+def _create_bot_game(user_id: str, db: Session) -> Game:
+    game = Game(game_id=new_id_str(), is_public=False)
+    if random.random() < 0.5:
+        game.player_id_1 = user_id
+        game.player_id_2 = BOT_UID
+    else:
+        game.player_id_1 = BOT_UID
+        game.player_id_2 = user_id
+    db.add(game)
+
+    # If bot is player 1, it opens with (0, 0, 0)
+    if game.player_id_1 == BOT_UID:
+        db.add(Move(game_id=game.game_id, move_index=0, a=False, r=0, c=0))
+
+    return game
+
+
 # Create a game against the bot
 @app.post("/api/game/bot", response_model=str)
 def create_bot_game(session_id: str = Cookie(...)):
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
-
-        game = Game(game_id=new_id_str(), is_public=False)
-        if random.random() < 0.5:
-            game.player_id_1 = user.user_id
-            game.player_id_2 = BOT_UID
-        else:
-            game.player_id_1 = BOT_UID
-            game.player_id_2 = user.user_id
-        db.add(game)
-
-        # If bot is player 1, it opens with (0, 0, 0)
-        if game.player_id_1 == BOT_UID:
-            db.add(Move(game_id=game.game_id, move_index=0, a=False, r=0, c=0))
-
+        game = _create_bot_game(user.user_id, db)
         db.commit()
         return game.game_id
 
@@ -499,6 +503,20 @@ def rematch_game(game_id: str, session_id: str = Cookie(...), response: Response
         if game.player_id_1 is None or game.player_id_2 is None:
             raise HTTPException(status_code=400)
 
+        if game.rematch_id is not None:
+            raise HTTPException(status_code=400)
+
+        opp_id = other_value(game.player_id_1, game.player_id_2, user.user_id)
+
+        # Bot opponent: auto-accept and create a new bot game immediately
+        if opp_id == BOT_UID:
+            new_game = _create_bot_game(user.user_id, db)
+            game.rematch_offered = user.user_id
+            game.rematch_id = new_game.game_id
+            db.commit()
+            response.status_code = status.HTTP_200_OK
+            return new_game.game_id
+
         if game.rematch_offered is None:
             game.rematch_offered = user.user_id
             db.commit()
@@ -511,7 +529,6 @@ def rematch_game(game_id: str, session_id: str = Cookie(...), response: Response
 
         new_game_id = new_id_str()
         new_game = Game(game_id=new_game_id, is_public=False)
-        opp_id = other_value(game.player_id_1, game.player_id_2, user.user_id)
         if random.random() < 0.5:
             new_game.player_id_1 = user.user_id
             new_game.player_id_2 = opp_id

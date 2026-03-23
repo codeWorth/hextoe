@@ -123,8 +123,7 @@
 					<button class="chat-send-btn" onclick="sendChat()">Send</button>
 				</div>
 			</div>
-			<button class="forfeit-btn" id="forfeit-btn" onclick="doForfeit()">Forfeit</button>
-		<button class="forfeit-btn" id="rematch-btn" onclick="doRematch()" style="display:none;">Offer Rematch</button>
+			<button class="forfeit-btn" id="forfeit-btn">Forfeit</button>
 		</div>
 	</div>
 
@@ -334,22 +333,19 @@ function renderMoveList() {
 
 function renderTurnIndicator() {
 	turnEl.innerHTML = "";
-	const forfeitBtn = document.getElementById("forfeit-btn");
 	if (!_gameState) {
 		turnEl.textContent = "Loading...";
 		turnEl.className = "turn-indicator turn-waiting";
-		forfeitBtn.style.display = "none";
+		document.getElementById("forfeit-btn").style.display = "none";
 		return;
 	}
 	const isOver = _gameState.is_complete;
-	const inProgress = !isOver && _gameState.player_id_1 && _gameState.player_id_2;
 	const isPlayer = currentUser && (
 		_gameState.player_id_1 === currentUser.user_id ||
         _gameState.player_id_2 === currentUser.user_id
 	);
 	document.getElementById("chat-btn").style.display = isPlayer ? "" : "none";
-	forfeitBtn.style.display = inProgress ? "" : "none";
-	renderRematchBtn();
+	renderForfeitOrRematch();
 	if (isOver) {
 		turnEl.textContent = _gameState.winner_id ? "Game Over" : "Draw";
 		turnEl.className = "turn-indicator turn-over";
@@ -395,29 +391,39 @@ async function doForfeit() {
 	}
 }
 
-function renderRematchBtn() {
-	const btn = document.getElementById("rematch-btn");
+function renderForfeitOrRematch() {
+	const btn = document.getElementById("forfeit-btn");
 	const isPlayer = currentUser && (
 		_gameState.player_id_1 === currentUser.user_id ||
 		_gameState.player_id_2 === currentUser.user_id
 	);
-	if (!_gameState.is_complete || !isPlayer) {
+	if (!isPlayer) {
 		btn.style.display = "none";
 		return;
 	}
-	btn.style.display = "";
-	if (_gameState.rematch_id) {
-		btn.textContent = "Go to rematch";
+	if (_gameState.is_complete) {
+		btn.style.display = "";
+		btn.onclick = doRematch;
+		if (_gameState.rematch_id) {
+			btn.textContent = "Go to rematch";
+			btn.disabled = false;
+		} else if (!_gameState.rematch_offered) {
+			btn.textContent = "Offer Rematch";
+			btn.disabled = false;
+		} else if (_gameState.rematch_offered === currentUser.user_id) {
+			btn.textContent = "Waiting for response...";
+			btn.disabled = true;
+		} else {
+			btn.textContent = "Accept Rematch";
+			btn.disabled = false;
+		}
+	} else if (_gameState.player_id_1 && _gameState.player_id_2) {
+		btn.style.display = "";
+		btn.onclick = doForfeit;
+		btn.textContent = "Forfeit";
 		btn.disabled = false;
-	} else if (!_gameState.rematch_offered) {
-		btn.textContent = "Offer Rematch";
-		btn.disabled = false;
-	} else if (_gameState.rematch_offered === currentUser.user_id) {
-		btn.textContent = "Waiting for response...";
-		btn.disabled = true;
 	} else {
-		btn.textContent = "Accept Rematch";
-		btn.disabled = false;
+		btn.style.display = "none";
 	}
 }
 
@@ -431,7 +437,7 @@ async function doRematch() {
 	if (r.status === 204) {
 		_gameState.rematch_offered = currentUser.user_id;
 		waitingForRematch = true;
-		renderRematchBtn();
+		renderForfeitOrRematch();
 	} else if (r.status === 200) {
 		window.location.href = "/game/" + r.data;
 	}
