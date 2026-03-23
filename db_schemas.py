@@ -56,6 +56,7 @@ class Move(SQLModel, table=True):
 class BestMove(SQLModel, table=True):
     game_id: str = Field(max_length=ID_LEN, foreign_key="game.game_id", primary_key=True)
     move_index: int = Field(primary_key=True)
+    evaluation: int = Field(default=0)
     a: int
     r: int
     c: int
