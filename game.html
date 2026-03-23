@@ -149,7 +149,7 @@ function showBotMoveIfNeeded(prevMoveCount) {
 		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (curMaxMoveId + 1)).then(r => {
 			if (r.status === 200 && curMaxMoveId == maxMoveId) { bestMove = r.data; render(); }
 		});
-	} else if (isLastMove || (maxMoveId == -1)) {
+	} else if (isLastMove || maxMoveId == -1) {
         bestMove = null;
     }
 }
@@ -277,7 +277,7 @@ function renderMoveList() {
     if (lengthChanged) {
 	    moveListEl.scrollTop = moveListEl.scrollHeight;
     }
-	moveListEl.onmouseleave = () => { maxMoveId = -1; render(); };
+	moveListEl.onmouseleave = () => { maxMoveId = -1; showBotMoveIfNeeded(); render(); };
 }
 
 function renderTurnIndicator() {
