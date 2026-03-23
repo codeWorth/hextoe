@@ -499,6 +499,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	// Now we need to go through the moves and evaluate them in order. The moves
 	// are labeled with a score of how impactful they are. We simply go through them
 	// in order of impact, and see which gives us the best evaluation.
+	im_count = 0;
 	look_moves = look_moves_at_depth(depth);
 	if(look_moves > candidate_moves->mm_stack_size) {
 		look_moves = candidate_moves->mm_stack_size;
@@ -515,10 +516,9 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 					 candidate_moves->mm_stack_size,
 					 look_moves - 1);
 	// Now copy <look_moves> moves from candidate_moves if they have a large
-	// enough impact. We first copy those with larger impact than kth, element,
+	// enough impact. We first copy those with larger impact than kth element,
 	// then those with impact == kth, because we don't want to miss any elements
 	// with high impact.
-	im_count = 0;
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];
 		if(entry->mme_value > kth_largest->mme_value) {
