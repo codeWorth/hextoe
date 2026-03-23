@@ -39,6 +39,7 @@
 	</div>
 	<div class="button-row">
 		<button class="btn-primary" onclick="play()">Play</button>
+		<button class="btn-secondary" onclick="playBot()">Play Against Bot</button>
 		<button class="btn-secondary" onclick="createPrivate()">Create Private Room</button>
 	</div>
 	<div class="viewer">
@@ -69,6 +70,14 @@ let _selectedGameState = null;
 async function play() {
 	if (!await ensureSession()) return;
 	const r = await api("POST", "/api/game/join");
+	if (r.status === 200) {
+		window.location.href = "/game/" + r.data;
+	}
+}
+
+async function playBot() {
+	if (!await ensureSession()) return;
+	const r = await api("POST", "/api/game/bot");
 	if (r.status === 200) {
 		window.location.href = "/game/" + r.data;
 	}

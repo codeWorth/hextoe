@@ -50,6 +50,7 @@ from util import (
     prune_delete_game_conds,
     prune_finish_game_conds,
     MAX_MESSAGES,
+    BOT_UID,
 )
 
 
@@ -80,6 +81,16 @@ def _eval_loop():
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
+    with Session(engine) as db:
+        if db.get(User, BOT_UID) is None:
+            db.add(User(
+                user_id=BOT_UID,
+                username="Bot",
+                password_hash=b"",
+                session_id=new_id_str(),
+                session_ttl=datetime.utcnow(),
+            ))
+            db.commit()
     asyncio.get_event_loop().create_task(_prune_loop())
     _bot._loop = asyncio.get_event_loop()
     threading.Thread(target=_eval_loop, daemon=True).start()
@@ -403,6 +414,29 @@ def create_private_game(session_id: str = Cookie(...)):
         return game.game_id
 
 
+# Create a game against the bot
+@app.post("/api/game/bot", response_model=str)
+def create_bot_game(session_id: str = Cookie(...)):
+    with Session(engine) as db:
+        user = require_valid_session(session_id, db)
+
+        game = Game(game_id=new_id_str(), is_public=False)
+        if random.random() < 0.5:
+            game.player_id_1 = user.user_id
+            game.player_id_2 = BOT_UID
+        else:
+            game.player_id_1 = BOT_UID
+            game.player_id_2 = user.user_id
+        db.add(game)
+
+        # If bot is player 1, it opens with (0, 0, 0)
+        if game.player_id_1 == BOT_UID:
+            db.add(Move(game_id=game.game_id, move_index=0, a=False, r=0, c=0))
+
+        db.commit()
+        return game.game_id
+
+
 # Get game state. If this user is in this game, and the opponent is AFK, we forfeit
 # them before returning the game info.
 @app.get("/api/game/{game_id}", response_model=GameStateResponse)
@@ -526,6 +560,12 @@ def make_move(game_id: str, body: MoveBody, session_id: str = Cookie(...)):
 
         db.add(game)
         db.commit()
+
+        # If this is a bot game and the next turn is the bot's, queue evaluation
+        if not game.is_complete and (game.player_id_1 == BOT_UID or game.player_id_2 == BOT_UID):
+            next_player = get_current_player_id(game, len(moves))
+            if next_player == BOT_UID:
+                _bot.evaluate_ahead(game_id, 0)
 
         game = get_game_with_unames(game_id, db)
         return build_game_state(game, moves, user.user_id)

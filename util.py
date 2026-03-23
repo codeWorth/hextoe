@@ -16,6 +16,7 @@ MOVE_TOO_FAR = "TOO_FAR"
 MAX_MOVE_DIST = 7
 MAX_GAME_AGE_MINUTES = 5
 MAX_MESSAGES = 100
+BOT_UID = "9_2ZG20kA_PNRyVxXGKPhpRNZ7jTQ6p0YKuEaVbkV2I"
 
 def hash_password(password: str) -> bytes:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
@@ -302,6 +303,8 @@ def prune_finish_game_conds(user_id=None):
         Game.is_complete == False,
         Game.player_id_1 != None,
         Game.player_id_2 != None,
+        Game.player_id_1 != BOT_UID,
+        Game.player_id_2 != BOT_UID,
         or_(
             and_(Game.last_req_p1 != None, Game.last_req_p1 < min_req),
             and_(Game.last_req_p2 != None, Game.last_req_p2 < min_req),

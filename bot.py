@@ -5,10 +5,12 @@ import time
 import threading
 from types import SimpleNamespace
 
+from datetime import datetime
+
 from sqlmodel import Session, select
 
-from db_schemas import Move
-from util import is_player_one
+from db_schemas import Game, Move
+from util import is_player_one, check_winner, get_current_player_id, BOT_UID
 
 tasks = {}
 _lock = threading.Lock()
@@ -40,6 +42,9 @@ def proc_eval_task(engine):
         eval_task = tasks.pop(task_key)
 
     with Session(engine) as db:
+        game = db.get(Game, game_id)
+        is_bot = game is not None and (game.player_id_1 == BOT_UID or game.player_id_2 == BOT_UID)
+
         moves = db.exec(
             select(Move).where(Move.game_id == game_id).order_by(Move.move_index)
         ).all()
@@ -51,6 +56,41 @@ def proc_eval_task(engine):
             moves_list = moves_list[:num_moves]
 
         move = do_evaluate_ahead(moves_list)
+
+        # For bot games with num_moves==0, add moves to the DB
+        if is_bot and num_moves == 0 and move is not None and not game.is_complete:
+            current_player = get_current_player_id(game, len(moves))
+            while current_player == BOT_UID and move is not None and not game.is_complete:
+                new_move = Move(
+                    game_id=game_id,
+                    move_index=len(moves),
+                    a=bool(move["a"]),
+                    r=move["r"],
+                    c=move["c"],
+                )
+                db.add(new_move)
+                moves.append(new_move)
+
+                winner = check_winner(moves)
+                if winner == 1:
+                    game.winner_id = game.player_id_1
+                    game.is_complete = True
+                elif winner == 2:
+                    game.winner_id = game.player_id_2
+                    game.is_complete = True
+
+                game.move_time = datetime.utcnow()
+                db.add(game)
+                db.commit()
+
+                current_player = get_current_player_id(game, len(moves))
+                if current_player == BOT_UID and not game.is_complete:
+                    moves_list = [
+                        {"a": int(m.a), "r": m.r, "c": m.c, "p1": is_player_one(m.move_index)}
+                        for m in moves
+                    ]
+                    move = do_evaluate_ahead(moves_list)
+
         _loop.call_soon_threadsafe(eval_task.future_eval.set_result, move)
 
 
