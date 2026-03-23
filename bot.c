@@ -25,8 +25,8 @@
 #define MASK_31		0x7FFFFFFFULL
 #define P1_WON		262144
 #define P2_WON		-262144
-#define MAX_EVAL_DEPTH	8
-#define MAX_EVAL_WIDTH	15
+#define MAX_EVAL_DEPTH	6
+#define MAX_EVAL_WIDTH	11
 #define MIN_EVAL_WIDTH	4
 #define EVAL_WIDTH_STEP	2
 
