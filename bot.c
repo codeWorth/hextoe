@@ -76,8 +76,27 @@
 	(ml)->ml_len = 0;		\
 })
 
+#define	DLL_INIT(h, type, next, prev) {			\
+	(h)->next = (type *)(h);			\
+	(h)->prev = (type *)(h);			\
+}
+
+#define	DLL_ADD2HEAD(h, e, type, next, prev) {		\
+	(e)->next = (h)->next;				\
+	(e)->prev = (type *) (h);			\
+	(h)->next->prev = (e);				\
+	(h)->next = (e);				\
+}
+
+#define	DLL_DELETE(e, next, prev) {			\
+	(e)->prev->next = (e)->next;			\
+	(e)->next->prev = (e)->prev;			\
+	(e)->prev = (e)->next = NULL;			\
+}
+
 typedef struct mm_entry {
 	struct mm_entry	*mme_next;
+	struct mm_entry	*mme_prev;
 	uint64_t	mme_key;
 	int		mme_value;
 } mm_entry_t;
@@ -146,6 +165,8 @@ swap_entries(mm_entry_t *entries, int i, int j)
 }
 
 // Courtesy of rosetta code. QuickSelect algorithm. Modifies the given array.
+// This reorders the stack, so popping from the stack will be a bad idea now.
+// However, it updates the hash map, so no worries about continuing to use it.
 mm_entry_t *
 mm_entries_qselect(mm_entry_t *entries, int len, int k)
 {
@@ -264,7 +285,7 @@ mm_init(move_map_t *mm)
 	int	i;
 
 	for(i = 0; i < MM_BUCKETS; i++) {
-		mm->mm_buckets[i].mme_next = NULL;
+		DLL_INIT(&mm->mm_buckets[i], mm_entry_t, mme_next, mme_prev);
 	}
 	mm->mm_stack_size = 0;
 }
@@ -288,22 +309,22 @@ mm_insert(move_map_t *mm, uint64_t key, int value)
 
 	// Insert entry at start of bucket list, past head node
 	head = &mm->mm_buckets[index];
-	entry->mme_next = head->mme_next;
-	head->mme_next = entry;
+	DLL_ADD2HEAD(head, entry, mm_entry_t, mme_next, mme_prev);
 }
 
 mm_entry_t *
 mm_get(move_map_t *mm, uint64_t key)
 {
 	uint32_t	index;
-	mm_entry_t	*node;
+	mm_entry_t	*head, *node;
 
 	// Make hash/value pair, get bucket index
 	index = MME_INDEX(key);
 
 	// Iterate over list in bucket
-	node = mm->mm_buckets[index].mme_next;
-	while(node != NULL) {
+	head = &mm->mm_buckets[index];
+	node = head->mme_next;
+	while(node != head) {
 		if(key == node->mme_key) {
 			return node;
 		}
@@ -324,15 +345,14 @@ mm_remove(move_map_t *mm, uint64_t key)
 	// Iterate over list in bucket
 	head = &mm->mm_buckets[index];
 	node = head->mme_next;
-	while(node != NULL) {
+	while(node != head) {
 		if(key == node->mme_key) {
 			// Remove this element. It needs to be the top item
 			// of the stack. In my use case, I always insert and
 			// remove in this order (LIFO).
 			assert(node == &mm->mm_stack[mm->mm_stack_size - 1]);
 			mm->mm_stack_size--;
-			head->mme_next = node->mme_next;
-			node->mme_next = NULL;
+			DLL_DELETE(node, mme_next, mme_prev);
 			return;
 		}
 		node = node->mme_next;
