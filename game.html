@@ -141,7 +141,8 @@ let bestMove = null;
 
 function showBotMoveIfNeeded(prevMoveCount) {
 	const moveCountChanged = _gameState && _gameState.moves.length !== prevMoveCount;
-	const wantBestMove = _gameState && _gameState.moves.length > 0 && (!_gameState.winner_id || maxMoveId != -1);
+	const isLastMove = maxMoveId === _gameState.moves.length - 1;
+	const wantBestMove = _gameState && _gameState.moves.length > 0 && !isLastMove && (!_gameState.winner_id || maxMoveId != -1);
 	if (moveCountChanged && wantBestMove && currentUser && currentUser.bot_assist) {
         bestMove = null;
 		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (maxMoveId + 1)).then(r => {
