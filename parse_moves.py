@@ -30,10 +30,10 @@ def parse_and_sort(text):
         if key == 0 and score == 0:
             continue
         a, r, c = pos_from_mm_key(key)
-        results.append((a, r, c, score))
+        results.append((a, r, c, score, key))
     results.sort(key=lambda x: x[3], reverse=True)
-    for a, r, c, score in results:
-        print(f"a={a:2d}  r={r:4d}  c={c:4d}  score={score}")
+    for a, r, c, score, key in results:
+        print(f"a={a:2d}\tr={r:4d}\tc={c:4d}\tscore={score}\n\t{key}")
 
 if __name__ == "__main__":
     text = sys.stdin.read()

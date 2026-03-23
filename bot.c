@@ -35,8 +35,8 @@
 #define L1_SCORE	1
 #define L2_SCORE	8
 #define L3_SCORE	30
-#define L4_SCORE	200
-#define L5_SCORE	210
+#define L4_SCORE	120
+#define L5_SCORE	130
 
 #define SCORE_FOR_LEN(len) ({		\
 	int	score = 0;		\
@@ -144,6 +144,25 @@ mm_entries_qselect(mm_entry_t *entries, int len, int k)
 		return mm_entries_qselect(entries, st, k);
 	} else {
 		return mm_entries_qselect(entries + st, len - st, k - st);
+	}
+}
+
+
+// Also courtesy of rosetta code
+
+void
+moves_sort(uint64_t *moves, int len) {
+	int		i, j;
+	uint64_t	move;
+
+	for(size_t i = 1; i < len; ++i) {
+		move = moves[i];
+		j = i;
+		while((j > 0) && (move > moves[j - 1])) {
+			moves[j] = moves[j - 1];
+			--j;
+		}
+		moves[j] = move;
 	}
 }
 
@@ -503,12 +522,12 @@ look_moves_at_depth(int depth)
 // be returned to its original state when this function exits.
 int
 do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
-		  int alpha, int beta, uint64_t *best_move)
+		  int alpha, int beta, uint64_t *best_move_out)
 {
 	bool		is_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score;
 	int		im_count;
-	uint64_t	current_move, sub_best_move;
+	uint64_t	current_move, best_move;
 	uint64_t	impact_moves[MAX_EVAL_WIDTH];
 	mm_entry_t	*kth_largest, *entry;
 
@@ -572,18 +591,19 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 
 eval_impact_moves:
 	// Now iterate over every impact move.
+	moves_sort(impact_moves, im_count);
 	for(i = 0; i < im_count; i++) {
 		current_move = impact_moves[i];
 		mm_insert(mm, current_move, is_p1);
 		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
-					     alpha, beta, &sub_best_move);
+					     alpha, beta, NULL);
 		mm_remove(mm, current_move);
 		// If this is the first try, or this move is better for us than the previous
 		// best, update the best move.
 		if(i == 0 || (is_p1 && sub_eval > best_score) ||
 		   (!is_p1 && sub_eval < best_score)) {
 			best_score = sub_eval;
-			*best_move = current_move;
+			best_move = current_move;
 		}
 		// Update alpha/beta bounds and prune if the opponent can already do better.
 		if(is_p1) {
@@ -602,7 +622,12 @@ eval_impact_moves:
 			}
 		}
 	}
-	return depth == 0 ? 0 : best_score;
+	if(depth == 0) {
+		*best_move_out = best_move;
+		return 0;
+	} else {
+		return best_score;
+	}
 }
 
 bool
