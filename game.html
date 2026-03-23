@@ -149,7 +149,9 @@ function showBotMoveIfNeeded(prevMoveCount) {
 		api("GET", "/api/game/" + gameId + "/bot?num_moves=" + (curMaxMoveId + 1)).then(r => {
 			if (r.status === 200 && curMaxMoveId == maxMoveId) { bestMove = r.data; render(); }
 		});
-	}
+	} else if (isLastMove) {
+        bestMove = null;
+    }
 }
 
 function setGameState(val) {
