@@ -149,7 +149,7 @@ function renderHexGrid(canvas, ctx, camX, camY, moves, highlightIndex, winMoves,
 		const sx = pos.x - camX + w / 2;
 		const sy = pos.y - camY + h / 2;
 		if (!outOfBounds(sx, sy, w, h)) {
-			stroke = "#ddd";
+			stroke = "#5e8c61";
 			drawHex(ctx, sx, sy, HEX_SIZE, null, stroke);
 		}
 	}
