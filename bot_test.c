@@ -357,62 +357,59 @@ TEST(test_mm_insert_remove_reinsert) {
  * mm_entries_qselect tests
  */
 
+// Helper: build a move_map with entries of given values, for qselect tests.
+// Keys are arbitrary distinct arcs; values are what we care about.
+static void
+qs_setup(move_map_t *mm, int *values, int n)
+{
+	int i;
+	mm_init(mm);
+	for (i = 0; i < n; i++) {
+		arc_t p = {0, i, i * 7};
+		uint64_t key = mm_make_key(&p);
+		mm_insert(mm, key, values[i]);
+	}
+}
+
 TEST(test_qselect_k0) {
-	// Find the largest element (k=0 means 0th position in descending order)
-	mm_entry_t entries[5] = {
-		{NULL, 10, 3},
-		{NULL, 20, 7},
-		{NULL, 30, 1},
-		{NULL, 40, 9},
-		{NULL, 50, 5},
-	};
-	mm_entry_t *result = mm_entries_qselect(entries, 5, 0);
+	move_map_t mm;
+	int vals[5] = {3, 7, 1, 9, 5};
+	qs_setup(&mm, vals, 5);
+	mm_entry_t *result = mm_entries_qselect(mm.mm_stack, 5, 0);
 	ASSERT_EQ(result->mme_value, 9);
 }
 
 TEST(test_qselect_k2) {
-	mm_entry_t entries[5] = {
-		{NULL, 10, 3},
-		{NULL, 20, 7},
-		{NULL, 30, 1},
-		{NULL, 40, 9},
-		{NULL, 50, 5},
-	};
-	// k=2: third largest (9, 7, 5, ...)
-	mm_entry_t *result = mm_entries_qselect(entries, 5, 2);
+	move_map_t mm;
+	int vals[5] = {3, 7, 1, 9, 5};
+	qs_setup(&mm, vals, 5);
+	mm_entry_t *result = mm_entries_qselect(mm.mm_stack, 5, 2);
 	ASSERT_EQ(result->mme_value, 5);
 }
 
 TEST(test_qselect_last) {
-	mm_entry_t entries[4] = {
-		{NULL, 10, 50},
-		{NULL, 20, 10},
-		{NULL, 30, 30},
-		{NULL, 40, 20},
-	};
-	// k=3: smallest
-	mm_entry_t *result = mm_entries_qselect(entries, 4, 3);
+	move_map_t mm;
+	int vals[4] = {50, 10, 30, 20};
+	qs_setup(&mm, vals, 4);
+	mm_entry_t *result = mm_entries_qselect(mm.mm_stack, 4, 3);
 	ASSERT_EQ(result->mme_value, 10);
 }
 
 TEST(test_qselect_single) {
-	mm_entry_t entries[1] = {
-		{NULL, 99, 42},
-	};
-	mm_entry_t *result = mm_entries_qselect(entries, 1, 0);
+	move_map_t mm;
+	int vals[1] = {42};
+	qs_setup(&mm, vals, 1);
+	mm_entry_t *result = mm_entries_qselect(mm.mm_stack, 1, 0);
 	ASSERT_EQ(result->mme_value, 42);
 }
 
 TEST(test_qselect_equal_values) {
-	mm_entry_t entries[4] = {
-		{NULL, 1, 5},
-		{NULL, 2, 5},
-		{NULL, 3, 5},
-		{NULL, 4, 5},
-	};
-	mm_entry_t *result = mm_entries_qselect(entries, 4, 0);
+	move_map_t mm;
+	int vals[4] = {5, 5, 5, 5};
+	qs_setup(&mm, vals, 4);
+	mm_entry_t *result = mm_entries_qselect(mm.mm_stack, 4, 0);
 	ASSERT_EQ(result->mme_value, 5);
-	result = mm_entries_qselect(entries, 4, 3);
+	result = mm_entries_qselect(mm.mm_stack, 4, 3);
 	ASSERT_EQ(result->mme_value, 5);
 }
 
@@ -672,76 +669,294 @@ TEST(test_score_line_candidate_positions) {
 }
 
 /*
- * moves_sort tests
+ * swap_entries tests
  *
- * moves_sort sorts uint64_t array in descending order via insertion sort.
+ * After swapping, the hash map must remain fully functional:
+ * mm_get finds all entries, mm_insert adds new ones, mm_remove
+ * works on the (now-reordered) stack top.
  */
 
-TEST(test_moves_sort_empty)
-{
-	uint64_t arr[1] = {42};
-	moves_sort(arr, 0);
-	ASSERT_EQ(arr[0], 42); /* untouched */
+TEST(test_swap_entries_get_still_works) {
+	move_map_t mm;
+	mm_init(&mm);
+
+	arc_t p0 = {0, 0, 0}, p1 = {1, 1, 1}, p2 = {0, 2, 2};
+	uint64_t k0 = mm_make_key(&p0);
+	uint64_t k1 = mm_make_key(&p1);
+	uint64_t k2 = mm_make_key(&p2);
+
+	mm_insert(&mm, k0, 1);
+	mm_insert(&mm, k1, 0);
+	mm_insert(&mm, k2, 1);
+
+	// Swap stack slots 0 and 2
+	swap_entries(mm.mm_stack, 0, 2);
+
+	// All three entries must still be found with correct values
+	mm_entry_t *e0 = mm_get(&mm, k0);
+	mm_entry_t *e1 = mm_get(&mm, k1);
+	mm_entry_t *e2 = mm_get(&mm, k2);
+	ASSERT_TRUE(e0 != NULL);
+	ASSERT_TRUE(e1 != NULL);
+	ASSERT_TRUE(e2 != NULL);
+	ASSERT_EQ(e0->mme_value, 1);
+	ASSERT_EQ(e1->mme_value, 0);
+	ASSERT_EQ(e2->mme_value, 1);
 }
 
-TEST(test_moves_sort_single)
-{
-	uint64_t arr[] = {7};
-	moves_sort(arr, 1);
-	ASSERT_EQ(arr[0], 7);
+TEST(test_swap_entries_slots_changed) {
+	move_map_t mm;
+	mm_init(&mm);
+
+	arc_t p0 = {0, 0, 0}, p1 = {1, 1, 1}, p2 = {0, 2, 2};
+	uint64_t k0 = mm_make_key(&p0);
+	uint64_t k1 = mm_make_key(&p1);
+	uint64_t k2 = mm_make_key(&p2);
+
+	mm_insert(&mm, k0, 1);
+	mm_insert(&mm, k1, 0);
+	mm_insert(&mm, k2, 1);
+
+	// Before swap: stack[0] has k0, stack[2] has k2
+	ASSERT_EQ(mm.mm_stack[0].mme_key, k0);
+	ASSERT_EQ(mm.mm_stack[2].mme_key, k2);
+
+	swap_entries(mm.mm_stack, 0, 2);
+
+	// After swap: stack slots are exchanged
+	ASSERT_EQ(mm.mm_stack[0].mme_key, k2);
+	ASSERT_EQ(mm.mm_stack[2].mme_key, k0);
+	// Middle entry is untouched
+	ASSERT_EQ(mm.mm_stack[1].mme_key, k1);
 }
 
-TEST(test_moves_sort_already_sorted)
-{
-	uint64_t arr[] = {50, 40, 30, 20, 10};
-	moves_sort(arr, 5);
-	ASSERT_EQ(arr[0], 50);
-	ASSERT_EQ(arr[1], 40);
-	ASSERT_EQ(arr[2], 30);
-	ASSERT_EQ(arr[3], 20);
-	ASSERT_EQ(arr[4], 10);
+TEST(test_swap_entries_insert_after) {
+	move_map_t mm;
+	mm_init(&mm);
+
+	arc_t p0 = {0, 0, 0}, p1 = {1, 1, 1};
+	uint64_t k0 = mm_make_key(&p0);
+	uint64_t k1 = mm_make_key(&p1);
+
+	mm_insert(&mm, k0, 1);
+	mm_insert(&mm, k1, 0);
+
+	swap_entries(mm.mm_stack, 0, 1);
+
+	// Insert a new entry — should work fine
+	arc_t p2 = {0, 3, 3};
+	uint64_t k2 = mm_make_key(&p2);
+	mm_insert(&mm, k2, 1);
+
+	ASSERT_EQ(mm.mm_stack_size, 3);
+	ASSERT_TRUE(mm_get(&mm, k0) != NULL);
+	ASSERT_TRUE(mm_get(&mm, k1) != NULL);
+	ASSERT_TRUE(mm_get(&mm, k2) != NULL);
+	ASSERT_EQ(mm_get(&mm, k2)->mme_value, 1);
 }
 
-TEST(test_moves_sort_reverse_sorted)
-{
-	uint64_t arr[] = {1, 2, 3, 4, 5};
-	moves_sort(arr, 5);
-	ASSERT_EQ(arr[0], 5);
-	ASSERT_EQ(arr[1], 4);
-	ASSERT_EQ(arr[2], 3);
-	ASSERT_EQ(arr[3], 2);
-	ASSERT_EQ(arr[4], 1);
+TEST(test_swap_entries_remove_after) {
+	move_map_t mm;
+	mm_init(&mm);
+
+	arc_t p0 = {0, 0, 0}, p1 = {1, 1, 1}, p2 = {0, 2, 2};
+	uint64_t k0 = mm_make_key(&p0);
+	uint64_t k1 = mm_make_key(&p1);
+	uint64_t k2 = mm_make_key(&p2);
+
+	mm_insert(&mm, k0, 1);
+	mm_insert(&mm, k1, 0);
+	mm_insert(&mm, k2, 1);
+
+	// Swap 0 and 2: now stack top (index 2) holds k0
+	swap_entries(mm.mm_stack, 0, 2);
+
+	// mm_remove expects LIFO, so top of stack (k0) is removable
+	mm_remove(&mm, k0);
+	ASSERT_EQ(mm.mm_stack_size, 2);
+	ASSERT_NULL(mm_get(&mm, k0));
+	ASSERT_TRUE(mm_get(&mm, k1) != NULL);
+	ASSERT_TRUE(mm_get(&mm, k2) != NULL);
 }
 
-TEST(test_moves_sort_random_order)
-{
-	uint64_t arr[] = {30, 10, 50, 20, 40};
-	moves_sort(arr, 5);
-	ASSERT_EQ(arr[0], 50);
-	ASSERT_EQ(arr[1], 40);
-	ASSERT_EQ(arr[2], 30);
-	ASSERT_EQ(arr[3], 20);
-	ASSERT_EQ(arr[4], 10);
+TEST(test_swap_entries_adjacent) {
+	move_map_t mm;
+	mm_init(&mm);
+
+	arc_t p0 = {0, 0, 0}, p1 = {1, 1, 1};
+	uint64_t k0 = mm_make_key(&p0);
+	uint64_t k1 = mm_make_key(&p1);
+
+	mm_insert(&mm, k0, 1);
+	mm_insert(&mm, k1, 0);
+
+	swap_entries(mm.mm_stack, 0, 1);
+
+	ASSERT_EQ(mm.mm_stack[0].mme_key, k1);
+	ASSERT_EQ(mm.mm_stack[1].mme_key, k0);
+	ASSERT_TRUE(mm_get(&mm, k0) != NULL);
+	ASSERT_TRUE(mm_get(&mm, k1) != NULL);
+	ASSERT_EQ(mm_get(&mm, k0)->mme_value, 1);
+	ASSERT_EQ(mm_get(&mm, k1)->mme_value, 0);
 }
 
-TEST(test_moves_sort_duplicates)
-{
-	uint64_t arr[] = {5, 3, 5, 1, 3};
-	moves_sort(arr, 5);
-	ASSERT_EQ(arr[0], 5);
-	ASSERT_EQ(arr[1], 5);
-	ASSERT_EQ(arr[2], 3);
-	ASSERT_EQ(arr[3], 3);
-	ASSERT_EQ(arr[4], 1);
+TEST(test_swap_entries_same_bucket) {
+	// Two keys that hash to the same bucket — swap must keep
+	// the bucket chain intact.
+	// NOTE: This test currently FAILS, exposing a real bug in swap_entries
+	// when the two entries are DLL-adjacent (prev/next point at each other).
+	// The pointer fixup in swap_entries creates a self-reference.
+	move_map_t mm;
+	mm_init(&mm);
+
+	// Find two keys that collide (same bucket index)
+	arc_t pa = {0, 0, 0};
+	uint64_t ka = mm_make_key(&pa);
+	uint32_t target_bucket = MME_INDEX(ka);
+
+	// Brute-force a second key in the same bucket
+	arc_t pb;
+	uint64_t kb;
+	int r;
+	for (r = 1; r < 1000; r++) {
+		pb = (arc_t){0, r, 0};
+		kb = mm_make_key(&pb);
+		if (MME_INDEX(kb) == target_bucket)
+			break;
+	}
+	ASSERT_EQ(MME_INDEX(kb), target_bucket);
+
+	mm_insert(&mm, ka, 1);
+	mm_insert(&mm, kb, 0);
+
+	swap_entries(mm.mm_stack, 0, 1);
+
+	// Both must still be reachable through the same bucket chain
+	ASSERT_TRUE(mm_get(&mm, ka) != NULL);
+	ASSERT_TRUE(mm_get(&mm, kb) != NULL);
+	ASSERT_EQ(mm_get(&mm, ka)->mme_value, 1);
+	ASSERT_EQ(mm_get(&mm, kb)->mme_value, 0);
 }
 
-TEST(test_moves_sort_all_equal)
+TEST(test_swap_entries_many) {
+	// Insert many entries, swap several pairs, verify all lookups
+	move_map_t mm;
+	mm_init(&mm);
+
+	int n = 20;
+	uint64_t keys[20];
+	int i;
+	for (i = 0; i < n; i++) {
+		arc_t p = {i & 1, i * 3, i * 7};
+		keys[i] = mm_make_key(&p);
+		mm_insert(&mm, keys[i], i);
+	}
+
+	// Swap several pairs
+	swap_entries(mm.mm_stack, 0, 19);
+	swap_entries(mm.mm_stack, 5, 10);
+	swap_entries(mm.mm_stack, 3, 17);
+
+	// Every entry must still be found with its original value
+	for (i = 0; i < n; i++) {
+		mm_entry_t *e = mm_get(&mm, keys[i]);
+		ASSERT_TRUE(e != NULL);
+		ASSERT_EQ(e->mme_value, i);
+	}
+}
+
+/*
+ * ml_sort tests
+ *
+ * ml_sort sorts a move_list_t by mle_score in descending order.
+ */
+
+TEST(test_ml_sort_empty)
 {
-	uint64_t arr[] = {99, 99, 99};
-	moves_sort(arr, 3);
-	ASSERT_EQ(arr[0], 99);
-	ASSERT_EQ(arr[1], 99);
-	ASSERT_EQ(arr[2], 99);
+	move_entry_t arr[1] = {{0, 42}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 1);
+	ml.ml_len = 0;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 42); /* untouched */
+}
+
+TEST(test_ml_sort_single)
+{
+	move_entry_t arr[] = {{0, 7}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 1);
+	ml.ml_len = 1;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 7);
+}
+
+TEST(test_ml_sort_already_sorted)
+{
+	move_entry_t arr[] = {{0,50},{0,40},{0,30},{0,20},{0,10}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 5);
+	ml.ml_len = 5;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 50);
+	ASSERT_EQ(arr[1].mle_score, 40);
+	ASSERT_EQ(arr[2].mle_score, 30);
+	ASSERT_EQ(arr[3].mle_score, 20);
+	ASSERT_EQ(arr[4].mle_score, 10);
+}
+
+TEST(test_ml_sort_reverse_sorted)
+{
+	move_entry_t arr[] = {{0,1},{0,2},{0,3},{0,4},{0,5}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 5);
+	ml.ml_len = 5;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 5);
+	ASSERT_EQ(arr[1].mle_score, 4);
+	ASSERT_EQ(arr[2].mle_score, 3);
+	ASSERT_EQ(arr[3].mle_score, 2);
+	ASSERT_EQ(arr[4].mle_score, 1);
+}
+
+TEST(test_ml_sort_random_order)
+{
+	move_entry_t arr[] = {{0,30},{0,10},{0,50},{0,20},{0,40}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 5);
+	ml.ml_len = 5;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 50);
+	ASSERT_EQ(arr[1].mle_score, 40);
+	ASSERT_EQ(arr[2].mle_score, 30);
+	ASSERT_EQ(arr[3].mle_score, 20);
+	ASSERT_EQ(arr[4].mle_score, 10);
+}
+
+TEST(test_ml_sort_duplicates)
+{
+	move_entry_t arr[] = {{0,5},{0,3},{0,5},{0,1},{0,3}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 5);
+	ml.ml_len = 5;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 5);
+	ASSERT_EQ(arr[1].mle_score, 5);
+	ASSERT_EQ(arr[2].mle_score, 3);
+	ASSERT_EQ(arr[3].mle_score, 3);
+	ASSERT_EQ(arr[4].mle_score, 1);
+}
+
+TEST(test_ml_sort_all_equal)
+{
+	move_entry_t arr[] = {{0,99},{0,99},{0,99}};
+	move_list_t ml;
+	INIT_STACK(&ml, arr, 3);
+	ml.ml_len = 3;
+	ml_sort(&ml);
+	ASSERT_EQ(arr[0].mle_score, 99);
+	ASSERT_EQ(arr[1].mle_score, 99);
+	ASSERT_EQ(arr[2].mle_score, 99);
 }
 
 int
@@ -784,14 +999,23 @@ main(int argc, char const *argv[])
 	RUN(test_qselect_single);
 	RUN(test_qselect_equal_values);
 
-	printf("\nmoves_sort:\n");
-	RUN(test_moves_sort_empty);
-	RUN(test_moves_sort_single);
-	RUN(test_moves_sort_already_sorted);
-	RUN(test_moves_sort_reverse_sorted);
-	RUN(test_moves_sort_random_order);
-	RUN(test_moves_sort_duplicates);
-	RUN(test_moves_sort_all_equal);
+	printf("\nswap_entries:\n");
+	RUN(test_swap_entries_get_still_works);
+	RUN(test_swap_entries_slots_changed);
+	RUN(test_swap_entries_insert_after);
+	RUN(test_swap_entries_remove_after);
+	RUN(test_swap_entries_adjacent);
+	RUN(test_swap_entries_same_bucket);
+	RUN(test_swap_entries_many);
+
+	printf("\nml_sort:\n");
+	RUN(test_ml_sort_empty);
+	RUN(test_ml_sort_single);
+	RUN(test_ml_sort_already_sorted);
+	RUN(test_ml_sort_reverse_sorted);
+	RUN(test_ml_sort_random_order);
+	RUN(test_ml_sort_duplicates);
+	RUN(test_ml_sort_all_equal);
 
 	printf("\nscore_line:\n");
 	RUN(test_score_line_single_tile_open);
