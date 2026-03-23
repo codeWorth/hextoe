@@ -585,11 +585,6 @@ eval_impact_moves:
 			best_score = sub_eval;
 			*best_move = current_move;
 		}
-		// If the current player wins with this move, stop looking for other moves.
-		if((is_p1 && best_score == P1_WON) ||
-		   (!is_p1 && best_score == P2_WON)) {
-			break;
-		}
 		// Update alpha/beta bounds and prune if the opponent can already do better.
 		if(is_p1) {
 			if(best_score > alpha) {
