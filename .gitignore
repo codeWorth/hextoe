@@ -19,3 +19,4 @@ venv/
 # Binary
 bot
 bot.dSYM/
+libbot.so
