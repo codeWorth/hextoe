@@ -35,6 +35,8 @@ class Game(SQLModel, table=True):
     is_public: bool = Field(default=True)
     last_req_p1: Optional[datetime] = Field(default=None)
     last_req_p2: Optional[datetime] = Field(default=None)
+    rematch_offered: Optional[str] = Field(max_length=ID_LEN, default=None, foreign_key="user.user_id")
+    rematch_id: Optional[str] = Field(max_length=ID_LEN, default=None, foreign_key="game.game_id")
 
     __table_args__ = (
         Index("ix_game_complete_last_req_p1", "is_complete", "last_req_p1"),

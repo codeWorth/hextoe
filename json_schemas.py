@@ -40,6 +40,16 @@ class GameStateResponse(BaseModel):
     winner_id: Optional[str]
     is_your_turn: bool
     moves: list[MoveResponse]
+    is_complete: bool
+    rematch_offered: Optional[str]
+    rematch_id: Optional[str]
+
+
+class GameSummaryResponse(BaseModel):
+    length: int
+    is_complete: bool
+    rematch_id: Optional[str]
+    rematch_offered: Optional[str]
 
 
 class MoveFailureResponse(BaseModel):

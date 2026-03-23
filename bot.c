@@ -26,7 +26,7 @@
 #define P2_WON		-262144
 
 #ifdef EVAL_DEFAULTS
-#define MAX_EVAL_DEPTH	8
+#define MAX_EVAL_DEPTH	9
 #define MAX_EVAL_WIDTH	15
 #define MIN_EVAL_WIDTH	4
 #define EVAL_WIDTH_STEP	2

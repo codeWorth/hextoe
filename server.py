@@ -8,7 +8,7 @@ from typing import Union, Optional
 import os
 
 
-from fastapi import Cookie, FastAPI, HTTPException, Query, Response
+from fastapi import Cookie, FastAPI, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy import and_, func, or_, update, not_
 from sqlalchemy.orm import aliased
@@ -20,6 +20,7 @@ from json_schemas import (
     ChatMessageBody,
     ChatResponse,
     GameStateResponse,
+    GameSummaryResponse,
     MoveBody,
     MoveFailureResponse,
     UpdateUserBody,
@@ -481,13 +482,64 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
         return build_game_state(game, moves, user_id)
 
 
-@app.get("/api/game/{game_id}/moves", response_model=int)
-def get_move_count(game_id: str):
+@app.put("/api/game/{game_id}/rematch", response_model=str)
+def rematch_game(game_id: str, session_id: str = Cookie(...), response: Response):
     with Session(engine) as db:
+        user = require_valid_session(session_id, db)
+        game = db.get(Game, game_id)
+        if game is None:
+            raise HTTPException(status_code=404)
+
+        if not game.player_id_1 == user.user_id and not game.player_id_2 == user.user_id:
+            raise HTTPException(status_code=403)
+
+        if not game.is_complete:
+            raise HTTPException(status_code=400)
+
+        if game.player_id_1 is None or game.player_id_2 is None:
+            raise HTTPException(status_code=400)
+
+        if game.rematch_offered is None:
+            game.rematch_offered = user.user_id
+            db.commit()
+            response.status_code = status.HTTP_204_NO_CONTENT
+            return
+
+        if game.rematch_offered == user.user_id:
+            response.status_code = status.HTTP_204_NO_CONTENT
+            return
+
+        new_game_id = new_id_str()
+        new_game = Game(game_id=new_game_id, is_public=False)
+        opp_id = other_value(game.player_id_1, game.player_id_2, user.user_id)
+        if random.random() < 0.5:
+            new_game.player_id_1 = user.user_id
+            new_game.player_id_2 = opp_id
+        else:
+            new_game.player_id_1 = opp_id
+            new_game.player_id_2 = user.user_id
+        db.add(new_game)
+        game.rematch_id = new_game_id
+        db.commit()
+        response.status_code = status.HTTP_200_OK
+        return new_game_id
+
+
+@app.get("/api/game/{game_id}/summary", response_model=GameSummaryResponse)
+def get_game_summary(game_id: str):
+    with Session(engine) as db:
+        game = db.get(Game, game_id)
+        if game is None:
+            raise HTTPException(status_code=404)
         count = db.exec(
             select(func.count(Move.move_index)).where(Move.game_id == game_id)
         ).one()
-        return count
+        return {
+            "length": count,
+            "is_complete": game.is_complete,
+            "rematch_id": game.rematch_id,
+            "rematch_offered": game.rematch_offered,
+        }
 
 
 @app.get("/api/game/{game_id}/bot", response_model=BotMoveResponse)
