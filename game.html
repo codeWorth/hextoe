@@ -58,6 +58,11 @@
 
 		.chat-btn { bottom: 28px; right: 72px; }
 		.chat-btn span { font-size: 16px; }
+		.hex-coords {
+			position: absolute; bottom: 8px; right: 16px;
+			font-size: 12px; font-family: monospace; color: var(--text-muted);
+			pointer-events: none; user-select: none;
+		}
 		.chat-btn.active { background: rgba(74, 74, 74, 1); color: var(--text); }
 
 		.chat-panel {
@@ -101,6 +106,7 @@
 			<button class="recenter-btn" onclick="cam.reset();" title="Re-center">
                 <span>&#x2316;</span>
             </button>
+			<div class="hex-coords" id="hex-coords"></div>
 		</div>
 		<div class="sidebar">
 			<div class="turn-indicator" id="turn-indicator"></div>
@@ -428,6 +434,25 @@ async function sendChat() {
 
 document.getElementById("chat-input").addEventListener("keydown", (e) => {
 	if (e.key === "Enter") { e.preventDefault(); sendChat(); }
+});
+
+// -- Hover coords --
+
+const hexCoordsEl = document.getElementById("hex-coords");
+canvas.addEventListener("mousemove", (e) => {
+	const rect = canvas.getBoundingClientRect();
+	const dpr = window.devicePixelRatio || 1;
+	const w = canvas.width / dpr;
+	const h = canvas.height / dpr;
+	const mx = e.clientX - rect.left;
+	const my = e.clientY - rect.top;
+	const wx = mx + cam.x - w / 2;
+	const wy = my + cam.y - h / 2;
+	const hex = pixelToHex(wx, wy);
+	hexCoordsEl.textContent = "(" + hex.a + ", " + hex.r + ", " + hex.c + ")";
+});
+canvas.addEventListener("mouseleave", () => {
+	hexCoordsEl.textContent = "";
 });
 
 // -- Resize --
