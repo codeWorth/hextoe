@@ -140,6 +140,7 @@ const pathParts = window.location.pathname.split("/");
 const gameId = pathParts[pathParts.length - 1];
 
 let _gameState = null;
+let _gameSummary = null;
 let pollTimer = null;
 let maxMoveId = -1;
 let winningMoves = null;
@@ -206,12 +207,15 @@ async function pollGameState() {
 			window.location.href = "/game/" + s.rematch_id;
 			return;
 		}
-		if (s.length !== _gameState.moves.length ||
-			s.is_complete !== _gameState.is_complete ||
-			s.rematch_id !== _gameState.rematch_id ||
-			s.rematch_offered !== _gameState.rematch_offered) {
-			await fetchGameState();
+		if (_gameSummary) {
+			for (const k in s) {
+				if (s[k] !== _gameSummary[k]) {
+					await fetchGameState();
+					break;
+				}
+			}
 		}
+		_gameSummary = s;
 	}
 }
 
