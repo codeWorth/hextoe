@@ -66,23 +66,23 @@ function renderProfile() {
 
 	actionsEl.innerHTML = "";
 	if (currentUser && currentUser.user_id === profileUserId && !currentUser.is_anon) {
-		const toggleWrap = document.createElement("label");
-		toggleWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-light);cursor:pointer;";
-		const checkbox = document.createElement("input");
-		checkbox.type = "checkbox";
-		checkbox.checked = _botAssist;
-		checkbox.onchange = async () => {
-			const r = await api("PUT", "/api/user", { body: { bot_assist: checkbox.checked } });
-			if (r.status === 204) {
-				_botAssist = checkbox.checked;
-				currentUser.bot_assist = checkbox.checked;
-			} else {
-				checkbox.checked = _botAssist;
-			}
-		};
-		toggleWrap.appendChild(checkbox);
-		toggleWrap.appendChild(document.createTextNode("Bot Assistance"));
-		actionsEl.appendChild(toggleWrap);
+		// const toggleWrap = document.createElement("label");
+		// toggleWrap.style.cssText = "display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text-light);cursor:pointer;";
+		// const checkbox = document.createElement("input");
+		// checkbox.type = "checkbox";
+		// checkbox.checked = _botAssist;
+		// checkbox.onchange = async () => {
+		// 	const r = await api("PUT", "/api/user", { body: { bot_assist: checkbox.checked } });
+		// 	if (r.status === 204) {
+		// 		_botAssist = checkbox.checked;
+		// 		currentUser.bot_assist = checkbox.checked;
+		// 	} else {
+		// 		checkbox.checked = _botAssist;
+		// 	}
+		// };
+		// toggleWrap.appendChild(checkbox);
+		// toggleWrap.appendChild(document.createTextNode("Bot Assistance"));
+		// actionsEl.appendChild(toggleWrap);
 
 		const btn = document.createElement("button");
 		btn.className = "btn-secondary btn-small";

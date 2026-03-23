@@ -167,8 +167,10 @@ def update_user(body: UpdateUserBody, response: Response, session_id: str = Cook
                 user.username = body.username
         if body.password is not None:
             user.password_hash = hash_password(body.password)
-        if body.bot_assist is not None:
-            user.bot_assist = body.bot_assist
+        # if body.bot_assist is not None:
+        #     user.bot_assist = body.bot_assist
+        # For now disable bot assist
+        user.bot_assist = False
         if updated_uname_pass:
             user.session_id = new_id_str()
             user.session_ttl = new_session_ttl()
