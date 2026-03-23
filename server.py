@@ -511,6 +511,7 @@ def rematch_game(game_id: str, response: Response, session_id: str = Cookie(...)
         # Bot opponent: auto-accept and create a new bot game immediately
         if opp_id == BOT_UID:
             new_game = _create_bot_game(user.user_id, db)
+            db.commit()
             game.rematch_offered = user.user_id
             game.rematch_id = new_game.game_id
             db.commit()
@@ -536,6 +537,7 @@ def rematch_game(game_id: str, response: Response, session_id: str = Cookie(...)
             new_game.player_id_1 = opp_id
             new_game.player_id_2 = user.user_id
         db.add(new_game)
+        db.commit()
         game.rematch_id = new_game_id
         db.commit()
         response.status_code = status.HTTP_200_OK
