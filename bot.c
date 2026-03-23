@@ -475,7 +475,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 	bool		is_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score;
 	int		im_count;
-	uint64_t	current_move;
+	uint64_t	current_move, sub_best_move;
 	uint64_t	impact_moves[MAX_EVAL_WIDTH];
 	mm_entry_t	*kth_largest, *entry;
 
@@ -543,7 +543,7 @@ eval_impact_moves:
 		current_move = impact_moves[i];
 		mm_insert(mm, current_move, is_p1);
 		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
-					     alpha, beta, best_move);
+					     alpha, beta, &sub_best_move);
 		mm_remove(mm, current_move);
 		// If this is the first try, or this move is better for us than the previous
 		// best, update the best move.
