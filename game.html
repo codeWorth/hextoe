@@ -107,7 +107,7 @@ function setGameState(val) {
 	renderTurnIndicator();
 	const moveCountChanged = _gameState && _gameState.moves.length !== prevMoveCount;
 	const wantBestMove = _gameState && _gameState.moves.length > 0 && !_gameState.winner_id;
-	if (moveCountChanged && wantBestMove) {
+	if (moveCountChanged && wantBestMove && currentUser && currentUser.bot_assist) {
         bestMove = null;
 		api("GET", "/api/game/" + gameId + "/bot").then(r => {
 			if (r.status === 200) { bestMove = r.data; render(); }

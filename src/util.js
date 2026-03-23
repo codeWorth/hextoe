@@ -24,7 +24,7 @@ let currentUser = null;
 async function loadCurrentUser() {
 	const r = await api("GET", "/api/user");
 	if (r.status === 200) {
-		currentUser = { user_id: r.data.user_id, username: r.data.username };
+		currentUser = { user_id: r.data.user_id, username: r.data.username, bot_assist: r.data.bot_assist };
 	} else {
 		currentUser = null;
 	}
@@ -36,7 +36,7 @@ async function loadCurrentUser() {
 async function ensureSession() {
 	const r = await api("GET", "/api/user");
 	if (r.status === 200) {
-		currentUser = { user_id: r.data.user_id, username: r.data.username };
+		currentUser = { user_id: r.data.user_id, username: r.data.username, bot_assist: r.data.bot_assist };
 		return true;
 	}
 	const a = await api("POST", "/api/anon_user");

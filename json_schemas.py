@@ -14,6 +14,7 @@ class UserInfoBody(BaseModel):
 class UpdateUserBody(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
+    bot_assist: Optional[bool] = None
 
 
 class MoveBody(BaseModel):
@@ -66,6 +67,7 @@ class GameListEntry(BaseModel):
 class UserProfileResponse(BaseModel):
     username: str
     user_id: str
+    bot_assist: bool
 
 
 class GameListResponse(BaseModel):

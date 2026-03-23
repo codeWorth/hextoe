@@ -142,12 +142,13 @@ def create_anon_user(response: Response):
 # Update info of existing user
 @app.put("/api/user", status_code=204)
 def update_user(body: UpdateUserBody, response: Response, session_id: str = Cookie(...)):
-    if body.username is None and body.password is None:
+    if body.username is None and body.password is None and body.bot_assist is None:
         raise HTTPException(status_code=400)
     with Session(engine) as db:
         user = require_valid_session(session_id, db)
         if user.is_anon:
             return
+        updated_uname_pass = body.username is not None or body.password is not None
         if body.username is not None:
             if len(body.username) > UNAME_MAX:
                 raise HTTPException(status_code=400)
@@ -155,11 +156,15 @@ def update_user(body: UpdateUserBody, response: Response, session_id: str = Cook
                 user.username = body.username
         if body.password is not None:
             user.password_hash = hash_password(body.password)
-        user.session_id = new_id_str()
-        user.session_ttl = new_session_ttl()
+        if body.bot_assist is not None:
+            user.bot_assist = body.bot_assist
+        if updated_uname_pass:
+            user.session_id = new_id_str()
+            user.session_ttl = new_session_ttl()
         db.add(user)
         db.commit()
-        _set_session_cookie(response, user.session_id, user.session_ttl)
+        if updated_uname_pass:
+            _set_session_cookie(response, user.session_id, user.session_ttl)
 
 
 # Delete user account
@@ -183,7 +188,8 @@ def get_current_user(session_id: str = Cookie(...)):
         user = require_valid_session(session_id, db)
         return {
             "username": get_uuname_safe(user),
-            "user_id": user.user_id
+            "user_id": user.user_id,
+            "bot_assist": user.bot_assist,
         }
 
 
@@ -196,7 +202,8 @@ def get_user(user_id: str):
             raise HTTPException(status_code=404)
         return {
             "username": get_uuname_safe(user),
-            "user_id": user.user_id
+            "user_id": user.user_id,
+            "bot_assist": user.bot_assist,
         }
 
 
@@ -437,8 +444,11 @@ def get_game(game_id: str, session_id: str = Cookie(None)):
 
 
 @app.get("/api/game/{game_id}/bot", response_model=BotMoveResponse)
-async def get_bot_move(game_id: str):
+async def get_bot_move(game_id: str, session_id: str = Cookie(...)):
     with Session(engine) as db:
+        user = require_valid_session(session_id, db)
+        if not user.bot_assist:
+            raise HTTPException(status_code=403)
         game = db.get(Game, game_id)
         if game is None:
             raise HTTPException(status_code=404)
