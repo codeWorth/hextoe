@@ -32,6 +32,37 @@
 #define EVAL_WIDTH_STEP	2
 #endif
 
+#define L1_SCORE	1
+#define L2_SCORE	8
+#define L3_SCORE	30
+#define L4_SCORE	120
+#define L5_SCORE	130
+
+#define SCORE_FOR_LEN(len) ({		\
+	int	score = 0;		\
+					\
+	switch(len) {			\
+	case 1:				\
+		score = L1_SCORE;	\
+		break;			\
+	case 2:				\
+		score = L2_SCORE;	\
+		break;			\
+	case 3:				\
+		score = L3_SCORE;	\
+		break;			\
+	case 4:				\
+		score = L4_SCORE;	\
+		break;			\
+	case 5:				\
+		score = L5_SCORE;	\
+		break;			\
+	default:			\
+		assert(0);		\
+	}				\
+	score;				\
+})
+
 #define PUSH_MOVE_STACK(stack, sz, mme) ({	\
 	(stack)[(sz)] = (mme)->mme_key;		\
 	(sz)++;					\
@@ -317,7 +348,6 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
 	cur_arc.r = arc->r;
 	cur_arc.c = arc->c;
 	for(i = 0; i < 5; i++) {
-		l_score = i+1;
 		step(&cur_arc, &next_arc);
 		next_key = mm_make_key(&next_arc);
 		next_entry = mm_get(mm, next_key);
@@ -326,7 +356,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
 		if(next_entry == NULL) {
 			// We want to make high scores much more desirable. Otherwise, points of interest,
 			// a.k.a. locations with many nearby tiles, get overrepresented.
-			l_score = l_score * l_score * l_score;
+			l_score = SCORE_FOR_LEN(i+1);
 			if(terminated) {
 				// A good candidate move is at the end of this line
 				*score = l_score * negate_score;
@@ -343,7 +373,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
 		// If we find an opponent tile, we've ended here. We may have 0 score,
 		// or normal score if the other side is not terminated.
 		if(next_entry->mme_value != is_p1) {
-			l_score = l_score * l_score * l_score;
+			l_score = SCORE_FOR_LEN(i+1);
 			if(terminated) {
 				*score = 0;
 				return 0;
