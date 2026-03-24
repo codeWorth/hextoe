@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
-#include <stdio.h>
 
 /*
  * FNV hash magic constants
