@@ -263,6 +263,74 @@ TEST(test_key_distinct) {
 }
 
 /*
+ * mm_append_dir_key / dir_from_mm_key tests
+ */
+
+TEST(test_dir_key_roundtrip_all_dirs) {
+	arc_t pos = {1, 5, -3};
+	uint64_t base = mm_make_key(&pos);
+	uint8_t dir;
+
+	for (dir = 0; dir <= 3; dir++) {
+		uint64_t dk = mm_append_dir_key(base, dir);
+		ASSERT_EQ(dir_from_mm_key(dk), dir);
+	}
+}
+
+TEST(test_dir_key_does_not_corrupt_pos) {
+	arc_t pos = {0, -7, 12}, out;
+	uint64_t base = mm_make_key(&pos);
+	uint8_t dir;
+
+	for (dir = 0; dir <= 3; dir++) {
+		uint64_t dk = mm_append_dir_key(base, dir);
+		pos_from_mm_key(dk, &out);
+		ASSERT_EQ(out.a, 0);
+		ASSERT_EQ(out.r, -7);
+		ASSERT_EQ(out.c, 12);
+	}
+}
+
+TEST(test_dir_key_zero_base) {
+	arc_t pos = {0, 0, 0}, out;
+	uint64_t base = mm_make_key(&pos);
+
+	uint64_t dk = mm_append_dir_key(base, 2);
+	ASSERT_EQ(dir_from_mm_key(dk), 2);
+	pos_from_mm_key(dk, &out);
+	ASSERT_EQ(out.a, 0);
+	ASSERT_EQ(out.r, 0);
+	ASSERT_EQ(out.c, 0);
+}
+
+TEST(test_dir_key_distinct_dirs) {
+	arc_t pos = {1, 3, 3};
+	uint64_t base = mm_make_key(&pos);
+
+	uint64_t d0 = mm_append_dir_key(base, 0);
+	uint64_t d1 = mm_append_dir_key(base, 1);
+	uint64_t d2 = mm_append_dir_key(base, 2);
+	uint64_t d3 = mm_append_dir_key(base, 3);
+
+	ASSERT_TRUE(d0 != d1);
+	ASSERT_TRUE(d1 != d2);
+	ASSERT_TRUE(d2 != d3);
+	ASSERT_TRUE(d0 != d3);
+}
+
+TEST(test_dir_key_negative_coords) {
+	arc_t pos = {1, -100, -200}, out;
+	uint64_t base = mm_make_key(&pos);
+	uint64_t dk = mm_append_dir_key(base, 3);
+
+	ASSERT_EQ(dir_from_mm_key(dk), 3);
+	pos_from_mm_key(dk, &out);
+	ASSERT_EQ(out.a, 1);
+	ASSERT_EQ(out.r, -100);
+	ASSERT_EQ(out.c, -200);
+}
+
+/*
  * mm_insert / mm_get / mm_remove tests
  */
 
@@ -1017,6 +1085,13 @@ main(int argc, char const *argv[])
 	RUN(test_key_roundtrip_mixed);
 	RUN(test_key_roundtrip_minus_one);
 	RUN(test_key_distinct);
+
+	printf("\nDir key encoding:\n");
+	RUN(test_dir_key_roundtrip_all_dirs);
+	RUN(test_dir_key_does_not_corrupt_pos);
+	RUN(test_dir_key_zero_base);
+	RUN(test_dir_key_distinct_dirs);
+	RUN(test_dir_key_negative_coords);
 
 	printf("\nMove map:\n");
 	RUN(test_mm_insert_get);

@@ -21,7 +21,8 @@
 #define HASH_FN(key)	splitmix64(key)
 #define MME_INDEX(key)	(HASH_FN(key) & MM_MASK)
 
-#define MASK_31		0x7FFFFFFFULL
+#define MASK_30		0x3FFFFFFFULL
+#define MASK_61		0x1FFFFFFFFFFFFFFF
 #define P1_WON		262144
 #define P2_WON		-262144
 
@@ -37,6 +38,17 @@
 #define L3_SCORE	30
 #define L4_SCORE	120
 #define L5_SCORE	130
+
+#define CLOSE_TERM	1
+#define FAR_TERM	2
+#define NO_TERM		3
+
+#define STEP_0		step_r
+#define STEP_R0		step_l
+#define STEP_1		step_dr
+#define STEP_R1		step_ul
+#define STEP_2		step_dl
+#define STEP_R2		step_ur
 
 #define SCORE_FOR_LEN(len) ({		\
 	int	score = 0;		\
@@ -106,6 +118,39 @@
 	(d)->mle_score = (s)->mle_score;	\
 })
 
+#define LM_SET(lm_entry, line)			\
+	(lm_entry)->mme_value = *((int *) line)
+
+#define LINE_TO_INT(line)			\
+	*((int *) line)
+
+#define LM_GET(lm_entry)			\
+	((line_t *) (&(lm_entry)->mme_value))
+
+#define LINE_EXTRACT_INFO(info, term_close, term_far, da, score) ({	\
+	int16_t	l_info = (info);					\
+									\
+	*(term_close) = l_info & 1;					\
+	l_info >>= 1;							\
+	*(term_far) = l_info & 1;					\
+	l_info >>= 1;							\
+	*(da) = l_info & 1;						\
+	l_info >>= 1;							\
+	*(score) = l_info;						\
+})
+
+#define LINE_PACK_INFO(term_close, term_far, da, score) ({	\
+	int16_t	info = 0;					\
+								\
+	info = (score);						\
+	info <<= 1;						\
+	info |= (da) & 1;					\
+	info <<= 1;						\
+	info |= (term_far) & 1;					\
+	info <<= 1;						\
+	info |= (term_close) & 1;				\
+})
+
 typedef struct mm_entry {
 	struct mm_entry	*mme_next;
 	struct mm_entry	*mme_prev;
@@ -135,6 +180,19 @@ typedef struct move_list {
 	int		ml_len;
 	int		ml_size;
 } move_list_t;
+
+// l_info contains packed bytes for the info about this line.
+// bottom 3 bits are close side term, far side term, then far loc a value
+// remaining 13 bits are signed score.
+// The "close side" is defined by wherever "step_rev" determines in score_line
+// term_far indicates the far side is terminated with opposite player.
+// l_dr is the change in r to get to the far side.
+// l_dc is the change in c to get to the far side.
+typedef struct line {
+	int16_t	l_info;
+	int8_t	l_dr;
+	int8_t	l_dc;
+} line_t;
 
 uint64_t
 splitmix64(uint64_t key) {
@@ -224,7 +282,7 @@ ml_sort(move_list_t *ml) {
 	int		i, j, len = ml->ml_len;
 	move_entry_t	e;
 
-	for(size_t i = 1; i < len; ++i) {
+	for(i = 1; i < len; ++i) {
 		ML_ENTRY_SET(&e, &ml->ml_moves[i]);
 		j = i;
 		while((j > 0) && (e.mle_score > ml->ml_moves[j - 1].mle_score)) {
@@ -285,22 +343,39 @@ mm_make_key(arc_t *arc)
 	uint64_t	key = 0;
 
 	key |= arc->a & 1;
-	key <<= 31;
-	key |= arc->r & MASK_31;
-	key <<= 31;
-	key |= arc->c & MASK_31;
+	key <<= 30;
+	key |= arc->r & MASK_30;
+	key <<= 30;
+	key |= arc->c & MASK_30;
 	return key;
+}
+
+uint64_t
+mm_append_dir_key(uint64_t key, uint8_t dir)
+{
+	uint64_t	llu_dir = dir;
+
+	// We're putting this into the top 3 bits. Technically it will only
+	// take up 2 bits worth of space, but you get the point.
+	llu_dir <<= 61;
+	return (key & MASK_61) | llu_dir;
 }
 
 void
 pos_from_mm_key(uint64_t key, arc_t *arc)
 {
-	// Sign extend the first 31 bits
-	arc->c = (((int) (key & MASK_31)) << 1) >> 1;
-	key >>= 31;
-	arc->r = (((int) (key & MASK_31)) << 1) >> 1;
-	key >>= 31;
+	// Sign extend the first 30 bits
+	arc->c = (((int) (key & MASK_30)) << 2) >> 2;
+	key >>= 30;
+	arc->r = (((int) (key & MASK_30)) << 2) >> 2;
+	key >>= 30;
 	arc->a = key & 1;
+}
+
+uint8_t
+dir_from_mm_key(uint64_t key)
+{
+	return key >> 61;
 }
 
 void
@@ -361,7 +436,7 @@ void
 mm_remove(move_map_t *mm, uint64_t key)
 {
 	uint32_t	index;
-	mm_entry_t	*node, *next, *head;
+	mm_entry_t	*node, *head;
 
 	// Get bucket index
 	index = MME_INDEX(key);
@@ -448,7 +523,7 @@ step_ur(arc_t *arc, arc_t *darc)
 
 int
 score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
-	   uint64_t *move1, uint64_t *move2, void (*step)(arc_t *, arc_t *),
+	   arc_t *far_arc, void (*step)(arc_t *, arc_t *),
 	   void (*step_rev)(arc_t *, arc_t *))
 {
 	int		i, negate_score, l_score;
@@ -485,20 +560,21 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
 		// If we've reached the end of the line, and there's nothing blocking it,
 		// then we can return the score (doubled if not terminated on the prev side)
 		if(next_entry == NULL) {
-			// We want to make high scores much more desirable. Otherwise, points of interest,
+			// We want to make high scores much more desirable. Otherwise, dense points,
 			// a.k.a. locations with many nearby tiles, get overrepresented.
 			l_score = SCORE_FOR_LEN(i+1);
+			// A good candidate move is at the end of this line
+			far_arc->a = next_arc.a;
+			far_arc->r = next_arc.r;
+			far_arc->c = next_arc.c;
 			if(terminated) {
-				// A good candidate move is at the end of this line
 				*score = l_score * negate_score;
-				*move1 = next_key;
-				return 1;
+				return CLOSE_TERM;
 			} else {
-				// At the end of both lines is good if possible
+				// At the end of both lines is good if possible,
+				// double the score because of that
 				*score = l_score * negate_score * 2;
-				*move1 = prev_key;
-				*move2 = next_key;
-				return 2;
+				return NO_TERM;
 			}
 		}
 		// If we find an opponent tile, we've ended here. We may have 0 score,
@@ -510,8 +586,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *score,
 				return 0;
 			} else {
 				*score = l_score * negate_score;
-				*move1 = prev_key;
-				return 1;
+				return FAR_TERM;
 			}
 		}
 		cur_arc.a = next_arc.a;
@@ -541,6 +616,62 @@ populate_move_map(move_map_t *mm, int* as, int* rs, int* cs, int* is_p1s,
 	}
 }
 
+// Populate the given candidate move map with moves. For over every line in
+// the line map. For each line, retrieve which ends are terminated. For each
+// end which is not terminated, insert or update the cmm with the move and its
+// score (absolute value to highlight important tiles for either player).
+void
+populate_cmm(move_map_t *cmm, move_map_t *lm)
+{
+	int		i, dir, score, da;
+	bool		term_close, term_far;
+	arc_t		arc, darc;
+	line_t		*line;
+	uint64_t	move_close, move_far;
+	mm_entry_t	*entry, *cm_entry;
+
+	// Clear the cmm
+	mm_init(cmm);
+	for(i = 0; i < lm->mm_stack_size; i++) {
+		entry = &lm->mm_stack[i];
+		line = LM_GET(entry);
+		dir = dir_from_mm_key(entry->mme_key);
+		LINE_EXTRACT_INFO(line->l_info, &term_close, &term_far, &da,
+				  &score);
+		score = score > 0 ? score : -score;
+		pos_from_mm_key(entry->mme_key, &arc);
+		if(dir == 0) {
+			STEP_R0(&arc, &darc);
+		} else if(dir == 1) {
+			STEP_R1(&arc, &darc);
+		} else {
+			STEP_R2(&arc, &darc);
+		}
+
+		if(!term_close) {
+			move_close = mm_make_key(&darc);
+			cm_entry = mm_get(cmm, move_close);
+			if(cm_entry == NULL) {
+				mm_insert(cmm, move_close, score);
+			} else {
+				cm_entry->mme_value += score;
+			}
+		}
+		if(!term_far) {
+			arc.a = da;
+			arc.r += line->l_dr;
+			arc.c += line->l_dc;
+			move_far = mm_make_key(&arc);
+			cm_entry = mm_get(cmm, move_far);
+			if(cm_entry == NULL) {
+				mm_insert(cmm, move_far, score);
+			} else {
+				cm_entry->mme_value += score;
+			}
+		}
+	}
+}
+
 // Iterate over every move in the current board state. For each move, check all the
 // directions to see if it's part of a line (we check right, down right, down left,
 // since we don't need to check the opposite directions).
@@ -549,35 +680,35 @@ populate_move_map(move_map_t *mm, int* as, int* rs, int* cs, int* is_p1s,
 // If we get score = 0, then it's a no-op.
 // Otherwise, we put the move into the candidates table, adding the score if the
 // move is already in the table. We also add up the total score for every move.
-// Do not rely on the move index in the movesTbl value; it may not be set.
+// This should be only be called at the top level of iteration. On deeper levels,
+// we should reuse line map results, and just update based on the one new move.
 int
-evaluate_board(move_map_t *mm, move_map_t *candidate_moves)
+evaluate_board(move_map_t *mm, move_map_t *cmm, move_map_t *lm)
 {
-	int 		r, c, i, j, score, mcount, total_score = 0;
+	int 		i, j, score, term_res, total_score = 0;
 	bool		a;
-	arc_t		arc;
-	uint64_t	move1, move2;
-	mm_entry_t	*entry, *cm_entry;
+	arc_t		arc, far_arc;
+	line_t		line;
+	uint64_t	key;
+	mm_entry_t	*entry;
 
-	// Clear this map
-	mm_init(candidate_moves);
-
+	mm_init(lm);
 	for(i = 0; i < mm->mm_stack_size; i++) {
 		entry = &mm->mm_stack[i];
 		pos_from_mm_key(entry->mme_key, &arc);
 		for(j = 0; j < 3; j++) {
 			if(j == 0) {
-				mcount = score_line(mm, entry, &arc, &score,
-						    &move1, &move2,
-						    step_r, step_l);
+				term_res = score_line(mm, entry, &arc, &score,
+						      &far_arc,
+						      STEP_0, STEP_R0);
 			} else if(j == 1) {
-				mcount = score_line(mm, entry, &arc, &score,
-						    &move1, &move2,
-						    step_dr, step_ul);
+				term_res = score_line(mm, entry, &arc, &score,
+						      &far_arc,
+						      STEP_1, STEP_R1);
 			} else {
-				mcount = score_line(mm, entry, &arc, &score,
-						    &move1, &move2,
-						    step_dl, step_ur);
+				term_res = score_line(mm, entry, &arc, &score,
+						      &far_arc,
+						      STEP_2, STEP_R2);
 			}
 			// If we got a winner, just return that.
 			if(score == P1_WON || score == P2_WON) {
@@ -588,30 +719,23 @@ evaluate_board(move_map_t *mm, move_map_t *candidate_moves)
 				continue;
 			}
 			total_score += score;
-			// Make score always positive
-			if(score < 0) {
-				score = -score;
+			// Insert line map entry for the line we just scored.
+			if(term_res != FAR_TERM) {
+				// We are not terminated on the far side, so
+				// we need to populate the location of that
+				// for later use.
+				a = far_arc.a;
+				line.l_dr = far_arc.r - arc.r;
+				line.l_dc = far_arc.c - arc.c;
 			}
-			// Insert/update at move1
-			if(mcount >= 1) {
-				cm_entry = mm_get(candidate_moves, move1);
-				if(cm_entry == NULL) {
-					mm_insert(candidate_moves, move1, score);
-				} else {
-					cm_entry->mme_value += score;
-				}
-			}
-			// Insert/update at move2
-			if(mcount >= 2) {
-				cm_entry = mm_get(candidate_moves, move2);
-				if(cm_entry == NULL) {
-					mm_insert(candidate_moves, move2, score);
-				} else {
-					cm_entry->mme_value += score;
-				}
-			}
+			line.l_info = LINE_PACK_INFO(term_res == CLOSE_TERM,
+						     term_res == FAR_TERM,
+						     a, score);
+			key = mm_append_dir_key(entry->mme_key, j);
+			mm_insert(lm, key, LINE_TO_INT(&line));
 		}
 	}
+	populate_cmm(cmm, lm);
 	return total_score;
 }
 
@@ -629,12 +753,15 @@ look_moves_at_depth(int depth)
 }
 
 // This function chooses the best move for the current player, based on the moves
-// passed in. Do not rely on the move index in the movesTbl value; it may not be set.
-// movesTbl is shared between calls to this function, it must
+// passed in.
+// mm is shared between calls to this function, it must
 // be returned to its original state when this function exits.
+// candidate_moves is shared memory but not needed to be saved between calls.
+// lm is the lines map, it is shared between calls and must be returned to its
+// original state before returning.
 int
-do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
-		  int alpha, int beta, uint64_t *best_move_out)
+do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, move_map_t *lm,
+		  int depth, int alpha, int beta, uint64_t *best_move_out)
 {
 	bool		is_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score;
@@ -645,7 +772,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t* candidate_moves, int depth,
 
 	INIT_STACK(&impact_moves, impact_entries, MAX_EVAL_WIDTH);
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
-	current_eval = evaluate_board(mm, candidate_moves);
+	current_eval = evaluate_board(mm, candidate_moves, lm);
 	if(current_eval == P1_WON || current_eval == P2_WON) {
 		// If we need to return the best move, but the game is over,
 		// so return -1 to indicate as such. -1 is a valid score, but
@@ -710,7 +837,7 @@ eval_impact_moves:
 	for(i = 0; i < impact_moves.ml_len; i++) {
 		current_move = impact_moves.ml_moves[i].mle_move;
 		mm_insert(mm, current_move, is_p1);
-		sub_eval = do_evaluate_ahead(mm, candidate_moves, depth+1,
+		sub_eval = do_evaluate_ahead(mm, candidate_moves, lm, depth+1,
 					     alpha, beta, NULL);
 		mm_remove(mm, current_move);
 		// If this is the first try, or this move is better for us than the previous
@@ -754,10 +881,11 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 	uint64_t	best_move;
 	move_map_t	mm;
 	move_map_t	candidate_moves;
+	move_map_t	lm;
 
 	mm_init(&mm);
 	populate_move_map(&mm, as, rs, cs, is_p1s, num_moves);
-	err = do_evaluate_ahead(&mm, &candidate_moves, 0, P2_WON, P1_WON,
+	err = do_evaluate_ahead(&mm, &candidate_moves, &lm, 0, P2_WON, P1_WON,
 				&best_move);
 	if(err == 0) {
 		pos_from_mm_key(best_move, &best_move_pos);
