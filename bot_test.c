@@ -513,65 +513,55 @@ sl_get(int a, int r, int c)
 }
 
 // Single tile, open on both sides in R direction.
-// score_line from the tile stepping right:
-//   prev (left) is empty -> not terminated
-//   next (right) is empty -> end of line, length 1
-//   score = L1_SCORE * 1 * 2 = 2 (p1, unterminated)
-//   returns 2 candidate moves (prev and next)
+// prev (left) is empty -> not terminated on either side
+// length 1 p1 -> len = 1
 TEST(test_score_line_single_tile_open) {
 	sl_reset();
 	sl_add(0, 0, 0, 1);
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, 2);  // L1_SCORE * 1 * 2 = 2
+	ASSERT_EQ(term, NO_TERM);
+	ASSERT_EQ(len, 1);
 }
 
 // Single tile with opponent on the left.
-// Terminated on prev side, open on right.
-// score = L1_SCORE * 1 = 1
-// returns 1 candidate move (next)
+// Terminated on close (prev) side, open on far side.
 TEST(test_score_line_single_tile_terminated) {
 	sl_reset();
 	sl_add(0, 0, -1, 0);  // opponent to the left
 	sl_add(0, 0, 0, 1);
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(mcount, 1);
-	ASSERT_EQ(score, 1);  // L1_SCORE * 1 = 1
+	ASSERT_EQ(term, CLOSE_TERM);
+	ASSERT_EQ(len, 1);
 }
 
 // Two p1 tiles in a row. Scoring from the left end (start of line).
-// (0,0,0) -> (0,0,1) -> empty
-// prev of (0,0,0) is (0,0,-1) = empty -> not terminated
-// stepping right: (0,0,1) is same player, (0,0,2) is empty
-// length = 2, score = L2_SCORE * 1 * 2 = 16 (unterminated)
+// prev of (0,0,0) is empty -> not terminated
+// length = 2, p1 -> len = 2
 TEST(test_score_line_two_in_row) {
 	sl_reset();
 	sl_add(0, 0, 0, 1);
 	sl_add(0, 0, 1, 1);
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, 16);  // L2_SCORE * 2 = 16
+	ASSERT_EQ(term, NO_TERM);
+	ASSERT_EQ(len, 2);
 }
 
 // Scoring from the second tile (not the line start) should return 0
@@ -581,71 +571,65 @@ TEST(test_score_line_not_line_start) {
 	sl_add(0, 0, 0, 1);
 	sl_add(0, 0, 1, 1);
 
-	arc_t pos = {0, 0, 1};
+	arc_t pos = {0, 0, 1}, far;
 	mm_entry_t *entry = sl_get(0, 0, 1);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(score, 0);
-	ASSERT_EQ(mcount, 0);
+	ASSERT_EQ(len, 0);
+	ASSERT_EQ(term, 0);
 }
 
 // P2 single tile, open both sides.
-// score = L1_SCORE * (-1) * 2 = -2
+// len = -1 (negative for p2)
 TEST(test_score_line_p2) {
 	sl_reset();
 	sl_add(0, 0, 0, 0);
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, -2);  // L1_SCORE * -1 * 2 = -2
+	ASSERT_EQ(term, NO_TERM);
+	ASSERT_EQ(len, -1);
 }
 
 // Blocked on both sides: opponent left, opponent right.
-// terminated on prev, opponent on next at i=0.
-// Both sides blocked -> score = 0
+// Both sides blocked -> len = 0
 TEST(test_score_line_fully_blocked) {
 	sl_reset();
 	sl_add(0, 0, -1, 0);  // opponent left
 	sl_add(0, 0, 0, 1);
 	sl_add(0, 0, 1, 0);   // opponent right
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(score, 0);
-	ASSERT_EQ(mcount, 0);
+	ASSERT_EQ(len, 0);
+	ASSERT_EQ(term, 0);
 }
 
 // Open left, opponent right after 1 tile.
-// Not terminated on left, opponent at i=0 on right.
-// score = L1_SCORE * 1 = 1, 1 move (prev)
+// Far side terminated, len = 1
 TEST(test_score_line_open_left_blocked_right) {
 	sl_reset();
 	sl_add(0, 0, 0, 1);
 	sl_add(0, 0, 1, 0);   // opponent right
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(mcount, 1);
-	ASSERT_EQ(score, 1);  // L1_SCORE * 1 = 1
+	ASSERT_EQ(term, FAR_TERM);
+	ASSERT_EQ(len, 1);
 }
 
 // 6 in a row = P1_WON
@@ -656,14 +640,13 @@ TEST(test_score_line_six_in_row_p1) {
 		sl_add(0, 0, i, 1);
 	}
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	score_line(&sl_mm, entry, &pos, &score,
-		   &move1, &move2, step_r, step_l);
+	int len;
+	score_line(&sl_mm, entry, &pos, &len,
+		   &far, step_r, step_l);
 
-	ASSERT_EQ(score, P1_WON);
+	ASSERT_EQ(len, P1_WON);
 }
 
 // 6 in a row for p2 = P2_WON
@@ -674,66 +657,48 @@ TEST(test_score_line_six_in_row_p2) {
 		sl_add(0, 0, i, 0);
 	}
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	score_line(&sl_mm, entry, &pos, &score,
-		   &move1, &move2, step_r, step_l);
+	int len;
+	score_line(&sl_mm, entry, &pos, &len,
+		   &far, step_r, step_l);
 
-	ASSERT_EQ(score, P2_WON);
+	ASSERT_EQ(len, P2_WON);
 }
 
 // Three in a row, open both sides, using DR/UL direction.
-// Start at (0,0,0). DR steps: (0,0,0)->(1,0,0)->(0,1,1)->(1,1,1)
-// Let's place tiles and score from the UL end.
 TEST(test_score_line_diagonal) {
 	sl_reset();
-	// Place 3 tiles going down-right from (0,0,0)
-	// (0,0,0) -> step_dr -> (1,0,0) -> step_dr -> (0,1,1)
 	sl_add(0, 0, 0, 1);
 	sl_add(1, 0, 0, 1);
 	sl_add(0, 1, 1, 1);
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_dr, step_ul);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_dr, step_ul);
 
-	// 3 tiles, open both sides: score = L3_SCORE * 1 * 2 = 60
-	ASSERT_EQ(mcount, 2);
-	ASSERT_EQ(score, 60);
+	ASSERT_EQ(term, NO_TERM);
+	ASSERT_EQ(len, 3);
 }
 
-// Verify candidate move keys decode to sensible positions
-TEST(test_score_line_candidate_positions) {
+// Verify far_arc position — single p1 tile, step right.
+// far_arc should be one step past the end: (0,0,1)
+TEST(test_score_line_far_arc_position) {
 	sl_reset();
 	sl_add(0, 0, 0, 1);
 
-	arc_t pos = {0, 0, 0};
+	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
-	int score;
-	uint64_t move1, move2;
-	int mcount = score_line(&sl_mm, entry, &pos, &score,
-				&move1, &move2, step_r, step_l);
+	int len;
+	int term = score_line(&sl_mm, entry, &pos, &len,
+			      &far, step_r, step_l);
 
-	ASSERT_EQ(mcount, 2);
-
-	// move1 should be left of (0,0,0) -> (0,0,-1)
-	arc_t m1;
-	pos_from_mm_key(move1, &m1);
-	ASSERT_EQ(m1.a, 0);
-	ASSERT_EQ(m1.r, 0);
-	ASSERT_EQ(m1.c, -1);
-
-	// move2 should be right of (0,0,0) -> (0,0,1)
-	arc_t m2;
-	pos_from_mm_key(move2, &m2);
-	ASSERT_EQ(m2.a, 0);
-	ASSERT_EQ(m2.r, 0);
-	ASSERT_EQ(m2.c, 1);
+	ASSERT_EQ(term, NO_TERM);
+	ASSERT_EQ(far.a, 0);
+	ASSERT_EQ(far.r, 0);
+	ASSERT_EQ(far.c, 1);
 }
 
 /*
@@ -1060,6 +1025,230 @@ TEST(test_ml_sort_all_equal)
 	ASSERT_EQ(arr[2].mle_score, 99);
 }
 
+/*
+ * evaluate_board_cached tests
+ *
+ * The key invariant: after calling evaluate_board_cached, the line map (lm)
+ * must be identical to what it was before — same stack_size, same keys,
+ * same values, same skipped flags.
+ */
+
+// Snapshot of one lm entry for comparison
+typedef struct lm_snapshot_entry {
+	uint64_t	key;
+	int		value;
+	bool		skipped;
+} lm_snapshot_entry_t;
+
+typedef struct lm_snapshot {
+	uint32_t		size;
+	lm_snapshot_entry_t	entries[MM_STACK_SIZE];
+} lm_snapshot_t;
+
+static void
+lm_take_snapshot(move_map_t *lm, lm_snapshot_t *snap)
+{
+	uint32_t i;
+
+	snap->size = lm->mm_stack_size;
+	for (i = 0; i < lm->mm_stack_size; i++) {
+		snap->entries[i].key = lm->mm_stack[i].mme_key;
+		snap->entries[i].value = lm->mm_stack[i].mme_value;
+		snap->entries[i].skipped = lm->mm_stack[i].mme_skipped;
+	}
+}
+
+// Returns 1 if snapshots match, 0 otherwise. Sets *mismatch_idx on failure.
+static int
+lm_check_snapshot(move_map_t *lm, lm_snapshot_t *snap, int *mismatch_idx)
+{
+	uint32_t i;
+
+	if (lm->mm_stack_size != snap->size) {
+		*mismatch_idx = -1;
+		return 0;
+	}
+	for (i = 0; i < snap->size; i++) {
+		if (lm->mm_stack[i].mme_key != snap->entries[i].key ||
+		    lm->mm_stack[i].mme_value != snap->entries[i].value ||
+		    lm->mm_stack[i].mme_skipped != snap->entries[i].skipped) {
+			*mismatch_idx = i;
+			return 0;
+		}
+	}
+	return 1;
+}
+
+// These are large, so static.
+static move_map_t ebc_mm, ebc_cmm, ebc_lm;
+static lm_snapshot_t ebc_snap;
+
+// Helper: build a board, call evaluate_board to populate lm, then insert
+// a move, call evaluate_board_cached, and check lm is restored.
+// Returns 1 on success, 0 on failure.
+static void
+ebc_setup(int *as, int *rs, int *cs, int *is_p1s, int num_moves)
+{
+	mm_init(&ebc_mm);
+	populate_move_map(&ebc_mm, as, rs, cs, is_p1s, num_moves);
+	evaluate_board(&ebc_mm, &ebc_cmm, &ebc_lm);
+}
+
+// Case 3: new tile with no friendly neighbors — creates a new 1-long line
+// that should be removed on undo.
+TEST(test_ebc_isolated_tile) {
+	// Start with one tile at (0,0,0)
+	int as[] = {0};
+	int rs[] = {0};
+	int cs[] = {0};
+	int ps[] = {1};
+
+	ebc_setup(as, rs, cs, ps, 1);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Insert a far-away tile that won't connect to anything
+	arc_t move = {0, 10, 10};
+	mm_insert(&ebc_mm, mm_make_key(&move), 0);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 0);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
+// Case 2: new tile extends a line on its left (reverse) side only.
+TEST(test_ebc_extend_left) {
+	// Two p1 tiles in a horizontal row: (0,0,0) and (0,0,1)
+	int as[] = {0, 0};
+	int rs[] = {0, 0};
+	int cs[] = {0, 1};
+	int ps[] = {1, 0};
+
+	ebc_setup(as, rs, cs, ps, 2);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Add p1 tile at (0,0,2) — extends the line to the right
+	// From (0,0,2)'s perspective, the existing line is to its left (step_rev)
+	arc_t move = {0, 0, 2};
+	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
+// Case 1: new tile has a friendly line to its right (step direction) only.
+TEST(test_ebc_extend_right) {
+	// p1 tile at (0,0,1)
+	int as[] = {0};
+	int rs[] = {0};
+	int cs[] = {1};
+	int ps[] = {1};
+
+	ebc_setup(as, rs, cs, ps, 1);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Add p1 tile at (0,0,0) — the existing line at (0,0,1) is to its right
+	arc_t move = {0, 0, 0};
+	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
+// Case 0: new tile connects two friendly lines.
+TEST(test_ebc_connect_two_lines) {
+	// p1 at (0,0,0) and p1 at (0,0,2) — gap at (0,0,1)
+	int as[] = {0, 0};
+	int rs[] = {0, 0};
+	int cs[] = {0, 2};
+	int ps[] = {1, 1};
+
+	ebc_setup(as, rs, cs, ps, 2);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Fill the gap — connects both lines
+	arc_t move = {0, 0, 1};
+	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
+// Multiple existing lines in various directions
+TEST(test_ebc_multi_direction) {
+	// Build an L-shape: horizontal p1 at (0,0,0)-(0,0,1),
+	// and diagonal p1 at (1,0,0)-(0,1,1)
+	int as[] = {0, 0, 1, 0};
+	int rs[] = {0, 0, 0, 1};
+	int cs[] = {0, 1, 0, 1};
+	int ps[] = {1, 1, 1, 1};
+
+	ebc_setup(as, rs, cs, ps, 4);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Add a tile that might interact with multiple directions
+	arc_t move = {0, 0, 2};
+	mm_insert(&ebc_mm, mm_make_key(&move), 0);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 0);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
+// Enemy tile next to a line — should create a terminated 1-long line
+TEST(test_ebc_enemy_neighbor) {
+	// p1 at (0,0,0), p2 at (0,0,1)
+	int as[] = {0, 0};
+	int rs[] = {0, 0};
+	int cs[] = {0, 1};
+	int ps[] = {1, 0};
+
+	ebc_setup(as, rs, cs, ps, 2);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Add p1 at (0,0,2) — has enemy p2 neighbor to left at (0,0,1)
+	arc_t move = {0, 0, 2};
+	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
+// Larger board — use the game state from the debug main function
+TEST(test_ebc_large_board) {
+	int as[] = {0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1,
+		    0, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1};
+	int rs[] = {0, 0, -1, -1, -1, -2, 0, -1, -1, -1, -1, 0, -2, 0, -2,
+		    -2, 0, -3, 0, -2, -2, -2, -2, -1, -1, -1, -1, -2, -3,
+		    -3, -3, -3, -4};
+	int cs[] = {0, 1, -1, 0, 1, 1, -1, 1, 0, 2, 2, 2, 0, 2, 0, 1, 3,
+		    1, 4, -1, -2, -3, -2, -3, -2, -4, -3, -1, -1, 0, -2,
+		    -1, -2};
+	int ps[] = {1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
+		    0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1};
+
+	ebc_setup(as, rs, cs, ps, 33);
+	lm_take_snapshot(&ebc_lm, &ebc_snap);
+
+	// Add a move and check lm is restored
+	arc_t move = {0, -4, -2};
+	mm_insert(&ebc_mm, mm_make_key(&move), 0);
+	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 0);
+	mm_remove(&ebc_mm, mm_make_key(&move));
+
+	int idx;
+	ASSERT_TRUE(lm_check_snapshot(&ebc_lm, &ebc_snap, &idx));
+}
+
 int
 main(int argc, char const *argv[])
 {
@@ -1137,7 +1326,16 @@ main(int argc, char const *argv[])
 	RUN(test_score_line_six_in_row_p1);
 	RUN(test_score_line_six_in_row_p2);
 	RUN(test_score_line_diagonal);
-	RUN(test_score_line_candidate_positions);
+	RUN(test_score_line_far_arc_position);
+
+	printf("\nevaluate_board_cached:\n");
+	RUN(test_ebc_isolated_tile);
+	RUN(test_ebc_extend_left);
+	RUN(test_ebc_extend_right);
+	RUN(test_ebc_connect_two_lines);
+	RUN(test_ebc_multi_direction);
+	RUN(test_ebc_enemy_neighbor);
+	RUN(test_ebc_large_board);
 
 	printf("\n%d/%d tests passed.\n", tests_passed, tests_run);
 	return tests_passed == tests_run ? 0 : 1;
