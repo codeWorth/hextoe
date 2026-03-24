@@ -21,3 +21,4 @@ bot
 bot.dSYM/
 libbot.so
 bot_test
+bot_demo
