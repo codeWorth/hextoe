@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <assert.h>
+#include <stdio.h>
 
 /*
  * FNV hash magic constants
@@ -561,7 +562,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
 			far_arc->c = next_arc.c;
 			// We want to make high scores much more desirable. Otherwise, dense points,
 			// a.k.a. locations with many nearby tiles, get overrepresented.
-			*len = (i+1) * negate_score;
+			*len = (i+1);
 			if(terminated) {
 				*score = SCORE_FOR_LEN(i+1) * negate_score;
 				return CLOSE_TERM;
@@ -579,7 +580,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
 				*score = 0;
 				return 0;
 			} else {
-				*len = (i+1) * negate_score;
+				*len = (i+1);
 				*score = SCORE_FOR_LEN(i+1) * negate_score;
 				return FAR_TERM;
 			}
@@ -777,6 +778,7 @@ evaluate_board_cached(move_map_t *mm, move_map_t *cmm, move_map_t *lm,
 	line_t		*line, new_line;
 	line_t		sv_lines[3];
 	uint8_t		cases[3];
+	int16_t		sv_scores[3];
 	uint64_t	key, left_key, home_key;
 	mm_entry_t	*entry;
 	mm_entry_t	*n_entries[3], *r_entries[3];
@@ -848,6 +850,11 @@ evaluate_board_cached(move_map_t *mm, move_map_t *cmm, move_map_t *lm,
 			line->l_info = LINE_PACK_INFO(tc, tf, a, len2 + 1 + len);
 			line->l_dr = dr;
 			line->l_dc = dc;
+			sv_scores[j] = r_entry->mme_score;
+			r_entry->mme_score = SCORE_FOR_LEN(len);
+			if(!is_p1) {
+				r_entry->mme_score *= -1;
+			}
 			cases[j] = 0;
 			continue;
 		}
@@ -865,6 +872,10 @@ evaluate_board_cached(move_map_t *mm, move_map_t *cmm, move_map_t *lm,
 			new_line.l_info = LINE_PACK_INFO(tc, tf, a, len+1);
 			new_line.l_dr = line->l_dr;
 			new_line.l_dc = line->l_dc;
+			score = SCORE_FOR_LEN(len);
+			if(!is_p1) {
+				score *= -1;
+			}
 			mm_insert(lm, mm_append_dir_key(home_key, j),
 				  LINE_TO_INT(&new_line), score);
 			cases[j] = 1;
@@ -888,6 +899,11 @@ evaluate_board_cached(move_map_t *mm, move_map_t *cmm, move_map_t *lm,
 			// arc2 is where the r0 line begins
 			line->l_dr = arc1.r - arc2.r;
 			line->l_dc = arc1.c - arc2.c;
+			sv_scores[j] = r_entry->mme_score;
+			r_entry->mme_score = SCORE_FOR_LEN(len);
+			if(!is_p1) {
+				r_entry->mme_score *= -1;
+			}
 			cases[j] = 2;
 			continue;
 		}
@@ -905,7 +921,7 @@ evaluate_board_cached(move_map_t *mm, move_map_t *cmm, move_map_t *lm,
 		new_line.l_dc = arc1.c - move->c;
 		new_line.l_info = LINE_PACK_INFO(tc, tf, a, 1);
 		mm_insert(lm, mm_append_dir_key(home_key, j),
-			  LINE_TO_INT(&new_line), score);
+			  LINE_TO_INT(&new_line), SCORE_FOR_LEN(1));
 		cases[j] = 3;
 	}
 
@@ -934,6 +950,7 @@ undo_move:
 			// We had friends on both sides. We need to unmark the
 			// right side as skipped, and restore the left side.
 			n_entries[j]->mme_skipped = false;
+			n_entries[j]->mme_score = sv_scores[j];
 			LM_SET(r_entries[j], &sv_lines[j]);
 			break;
 		case 1:
@@ -946,6 +963,7 @@ undo_move:
 		case 2:
 			// We had only a friend on the left. We need to restore
 			// it's value.
+			n_entries[j]->mme_score = sv_scores[j];
 			LM_SET(r_entries[j], &sv_lines[j]);
 			break;
 		case 3:
@@ -980,10 +998,12 @@ look_moves_at_depth(int depth)
 // original state before returning.
 int
 do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, move_map_t *lm,
-		  int depth, int alpha, int beta, uint64_t *best_move_out)
+		  int depth, int alpha, int beta, uint64_t *best_move_out,
+		  uint64_t prev_move)
 {
 	bool		is_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score;
+	arc_t		move_arc;
 	uint64_t	current_move, best_move;
 	move_list_t	impact_moves;
 	move_entry_t	impact_entries[MAX_EVAL_WIDTH];
@@ -991,7 +1011,14 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, move_map_t *lm,
 
 	INIT_STACK(&impact_moves, impact_entries, MAX_EVAL_WIDTH);
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
-	current_eval = evaluate_board(mm, candidate_moves, lm);
+	if(depth == 0) {
+		current_eval = evaluate_board(mm, candidate_moves, lm);
+	} else {
+		pos_from_mm_key(prev_move, &move_arc);
+		current_eval = evaluate_board_cached(mm, candidate_moves, lm,
+						     &move_arc, is_p1);
+		printf("move %llu at depth %d gave eval %d\n", prev_move, depth, current_eval);
+	}
 	if(current_eval == P1_WON || current_eval == P2_WON) {
 		// If we need to return the best move, but the game is over,
 		// so return -1 to indicate as such. -1 is a valid score, but
@@ -1057,7 +1084,7 @@ eval_impact_moves:
 		current_move = impact_moves.ml_moves[i].mle_move;
 		mm_insert(mm, current_move, is_p1, 0);
 		sub_eval = do_evaluate_ahead(mm, candidate_moves, lm, depth+1,
-					     alpha, beta, NULL);
+					     alpha, beta, NULL, current_move);
 		mm_remove(mm, current_move);
 		// If this is the first try, or this move is better for us than the previous
 		// best, update the best move.
@@ -1105,7 +1132,7 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 	mm_init(&mm);
 	populate_move_map(&mm, as, rs, cs, is_p1s, num_moves);
 	err = do_evaluate_ahead(&mm, &candidate_moves, &lm, 0, P2_WON, P1_WON,
-				&best_move);
+				&best_move, 0);
 	if(err == 0) {
 		pos_from_mm_key(best_move, &best_move_pos);
 		*best_a = best_move_pos.a;

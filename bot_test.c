@@ -340,7 +340,7 @@ TEST(test_mm_insert_get) {
 
 	arc_t pos = {0, 1, 2};
 	uint64_t key = mm_make_key(&pos);
-	mm_insert(&mm, key, 1);
+	mm_insert(&mm, key, 1, 0);
 
 	mm_entry_t *entry = mm_get(&mm, key);
 	ASSERT_TRUE(entry != NULL);
@@ -367,9 +367,9 @@ TEST(test_mm_insert_multiple) {
 	uint64_t k2 = mm_make_key(&p2);
 	uint64_t k3 = mm_make_key(&p3);
 
-	mm_insert(&mm, k1, 1);
-	mm_insert(&mm, k2, 0);
-	mm_insert(&mm, k3, 1);
+	mm_insert(&mm, k1, 1, 0);
+	mm_insert(&mm, k2, 0, 0);
+	mm_insert(&mm, k3, 1, 0);
 
 	ASSERT_EQ(mm.mm_stack_size, 3);
 	ASSERT_EQ(mm_get(&mm, k1)->mme_value, 1);
@@ -385,8 +385,8 @@ TEST(test_mm_remove_lifo) {
 	uint64_t k1 = mm_make_key(&p1);
 	uint64_t k2 = mm_make_key(&p2);
 
-	mm_insert(&mm, k1, 1);
-	mm_insert(&mm, k2, 0);
+	mm_insert(&mm, k1, 1, 0);
+	mm_insert(&mm, k2, 0, 0);
 	ASSERT_EQ(mm.mm_stack_size, 2);
 
 	// Remove k2 (top of stack)
@@ -408,7 +408,7 @@ TEST(test_mm_insert_remove_reinsert) {
 	arc_t p1 = {0, 2, 3};
 	uint64_t k1 = mm_make_key(&p1);
 
-	mm_insert(&mm, k1, 1);
+	mm_insert(&mm, k1, 1, 0);
 	ASSERT_EQ(mm.mm_stack_size, 1);
 
 	mm_remove(&mm, k1);
@@ -416,7 +416,7 @@ TEST(test_mm_insert_remove_reinsert) {
 	ASSERT_NULL(mm_get(&mm, k1));
 
 	// Reinsert with different value
-	mm_insert(&mm, k1, 0);
+	mm_insert(&mm, k1, 0, 0);
 	ASSERT_EQ(mm.mm_stack_size, 1);
 	ASSERT_EQ(mm_get(&mm, k1)->mme_value, 0);
 }
@@ -435,7 +435,7 @@ qs_setup(move_map_t *mm, int *values, int n)
 	for (i = 0; i < n; i++) {
 		arc_t p = {0, i, i * 7};
 		uint64_t key = mm_make_key(&p);
-		mm_insert(mm, key, values[i]);
+		mm_insert(mm, key, values[i], 0);
 	}
 }
 
@@ -500,7 +500,7 @@ sl_add(int a, int r, int c, int is_p1)
 {
 	arc_t arc = {a, r, c};
 	uint64_t key = mm_make_key(&arc);
-	mm_insert(&sl_mm, key, is_p1);
+	mm_insert(&sl_mm, key, is_p1, 0);
 	return key;
 }
 
@@ -522,7 +522,8 @@ TEST(test_score_line_single_tile_open) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(term, NO_TERM);
@@ -539,7 +540,8 @@ TEST(test_score_line_single_tile_terminated) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(term, CLOSE_TERM);
@@ -557,7 +559,8 @@ TEST(test_score_line_two_in_row) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(term, NO_TERM);
@@ -574,7 +577,8 @@ TEST(test_score_line_not_line_start) {
 	arc_t pos = {0, 0, 1}, far;
 	mm_entry_t *entry = sl_get(0, 0, 1);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(len, 0);
@@ -582,7 +586,7 @@ TEST(test_score_line_not_line_start) {
 }
 
 // P2 single tile, open both sides.
-// len = -1 (negative for p2)
+// len = 1, score = L1_SCORE * -1 * 2 = -2
 TEST(test_score_line_p2) {
 	sl_reset();
 	sl_add(0, 0, 0, 0);
@@ -590,11 +594,13 @@ TEST(test_score_line_p2) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(term, NO_TERM);
-	ASSERT_EQ(len, -1);
+	ASSERT_EQ(len, 1);
+	ASSERT_EQ(score, -2);
 }
 
 // Blocked on both sides: opponent left, opponent right.
@@ -608,7 +614,8 @@ TEST(test_score_line_fully_blocked) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(len, 0);
@@ -625,7 +632,8 @@ TEST(test_score_line_open_left_blocked_right) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(term, FAR_TERM);
@@ -643,10 +651,11 @@ TEST(test_score_line_six_in_row_p1) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	score_line(&sl_mm, entry, &pos, &len, &score,
 		   &far, step_r, step_l);
 
-	ASSERT_EQ(len, P1_WON);
+	ASSERT_EQ(score, P1_WON);
 }
 
 // 6 in a row for p2 = P2_WON
@@ -660,10 +669,11 @@ TEST(test_score_line_six_in_row_p2) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	score_line(&sl_mm, entry, &pos, &len, &score,
 		   &far, step_r, step_l);
 
-	ASSERT_EQ(len, P2_WON);
+	ASSERT_EQ(score, P2_WON);
 }
 
 // Three in a row, open both sides, using DR/UL direction.
@@ -676,7 +686,8 @@ TEST(test_score_line_diagonal) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_dr, step_ul);
 
 	ASSERT_EQ(term, NO_TERM);
@@ -692,7 +703,8 @@ TEST(test_score_line_far_arc_position) {
 	arc_t pos = {0, 0, 0}, far;
 	mm_entry_t *entry = sl_get(0, 0, 0);
 	int len;
-	int term = score_line(&sl_mm, entry, &pos, &len,
+	int score;
+	int term = score_line(&sl_mm, entry, &pos, &len, &score,
 			      &far, step_r, step_l);
 
 	ASSERT_EQ(term, NO_TERM);
@@ -718,9 +730,9 @@ TEST(test_swap_entries_get_still_works) {
 	uint64_t k1 = mm_make_key(&p1);
 	uint64_t k2 = mm_make_key(&p2);
 
-	mm_insert(&mm, k0, 1);
-	mm_insert(&mm, k1, 0);
-	mm_insert(&mm, k2, 1);
+	mm_insert(&mm, k0, 1, 0);
+	mm_insert(&mm, k1, 0, 0);
+	mm_insert(&mm, k2, 1, 0);
 
 	// Swap stack slots 0 and 2
 	swap_entries(mm.mm_stack, 0, 2);
@@ -746,9 +758,9 @@ TEST(test_swap_entries_slots_changed) {
 	uint64_t k1 = mm_make_key(&p1);
 	uint64_t k2 = mm_make_key(&p2);
 
-	mm_insert(&mm, k0, 1);
-	mm_insert(&mm, k1, 0);
-	mm_insert(&mm, k2, 1);
+	mm_insert(&mm, k0, 1, 0);
+	mm_insert(&mm, k1, 0, 0);
+	mm_insert(&mm, k2, 1, 0);
 
 	// Before swap: stack[0] has k0, stack[2] has k2
 	ASSERT_EQ(mm.mm_stack[0].mme_key, k0);
@@ -771,15 +783,15 @@ TEST(test_swap_entries_insert_after) {
 	uint64_t k0 = mm_make_key(&p0);
 	uint64_t k1 = mm_make_key(&p1);
 
-	mm_insert(&mm, k0, 1);
-	mm_insert(&mm, k1, 0);
+	mm_insert(&mm, k0, 1, 0);
+	mm_insert(&mm, k1, 0, 0);
 
 	swap_entries(mm.mm_stack, 0, 1);
 
 	// Insert a new entry — should work fine
 	arc_t p2 = {0, 3, 3};
 	uint64_t k2 = mm_make_key(&p2);
-	mm_insert(&mm, k2, 1);
+	mm_insert(&mm, k2, 1, 0);
 
 	ASSERT_EQ(mm.mm_stack_size, 3);
 	ASSERT_TRUE(mm_get(&mm, k0) != NULL);
@@ -797,9 +809,9 @@ TEST(test_swap_entries_remove_after) {
 	uint64_t k1 = mm_make_key(&p1);
 	uint64_t k2 = mm_make_key(&p2);
 
-	mm_insert(&mm, k0, 1);
-	mm_insert(&mm, k1, 0);
-	mm_insert(&mm, k2, 1);
+	mm_insert(&mm, k0, 1, 0);
+	mm_insert(&mm, k1, 0, 0);
+	mm_insert(&mm, k2, 1, 0);
 
 	// Swap 0 and 2: now stack top (index 2) holds k0
 	swap_entries(mm.mm_stack, 0, 2);
@@ -820,8 +832,8 @@ TEST(test_swap_entries_adjacent) {
 	uint64_t k0 = mm_make_key(&p0);
 	uint64_t k1 = mm_make_key(&p1);
 
-	mm_insert(&mm, k0, 1);
-	mm_insert(&mm, k1, 0);
+	mm_insert(&mm, k0, 1, 0);
+	mm_insert(&mm, k1, 0, 0);
 
 	swap_entries(mm.mm_stack, 0, 1);
 
@@ -856,8 +868,8 @@ TEST(test_swap_entries_same_bucket) {
 	}
 	ASSERT_EQ(MME_INDEX(kb), target_bucket);
 
-	mm_insert(&mm, ka, 1);
-	mm_insert(&mm, kb, 0);
+	mm_insert(&mm, ka, 1, 0);
+	mm_insert(&mm, kb, 0, 0);
 
 	swap_entries(mm.mm_stack, 0, 1);
 
@@ -892,8 +904,8 @@ TEST(test_swap_entries_same_bucket_rev) {
 	}
 	ASSERT_EQ(MME_INDEX(kb), target_bucket);
 
-	mm_insert(&mm, ka, 1);
-	mm_insert(&mm, kb, 0);
+	mm_insert(&mm, ka, 1, 0);
+	mm_insert(&mm, kb, 0, 0);
 
 	swap_entries(mm.mm_stack, 1, 0);
 
@@ -915,7 +927,7 @@ TEST(test_swap_entries_many) {
 	for (i = 0; i < n; i++) {
 		arc_t p = {i & 1, i * 3, i * 7};
 		keys[i] = mm_make_key(&p);
-		mm_insert(&mm, keys[i], i);
+		mm_insert(&mm, keys[i], i, 0);
 	}
 
 	// Swap several pairs
@@ -1037,6 +1049,7 @@ TEST(test_ml_sort_all_equal)
 typedef struct lm_snapshot_entry {
 	uint64_t	key;
 	int		value;
+	int16_t		score;
 	bool		skipped;
 } lm_snapshot_entry_t;
 
@@ -1054,6 +1067,7 @@ lm_take_snapshot(move_map_t *lm, lm_snapshot_t *snap)
 	for (i = 0; i < lm->mm_stack_size; i++) {
 		snap->entries[i].key = lm->mm_stack[i].mme_key;
 		snap->entries[i].value = lm->mm_stack[i].mme_value;
+		snap->entries[i].score = lm->mm_stack[i].mme_score;
 		snap->entries[i].skipped = lm->mm_stack[i].mme_skipped;
 	}
 }
@@ -1071,6 +1085,7 @@ lm_check_snapshot(move_map_t *lm, lm_snapshot_t *snap, int *mismatch_idx)
 	for (i = 0; i < snap->size; i++) {
 		if (lm->mm_stack[i].mme_key != snap->entries[i].key ||
 		    lm->mm_stack[i].mme_value != snap->entries[i].value ||
+		    lm->mm_stack[i].mme_score != snap->entries[i].score ||
 		    lm->mm_stack[i].mme_skipped != snap->entries[i].skipped) {
 			*mismatch_idx = i;
 			return 0;
@@ -1108,7 +1123,7 @@ TEST(test_ebc_isolated_tile) {
 
 	// Insert a far-away tile that won't connect to anything
 	arc_t move = {0, 10, 10};
-	mm_insert(&ebc_mm, mm_make_key(&move), 0);
+	mm_insert(&ebc_mm, mm_make_key(&move), 0, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 0);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
@@ -1130,7 +1145,7 @@ TEST(test_ebc_extend_left) {
 	// Add p1 tile at (0,0,2) — extends the line to the right
 	// From (0,0,2)'s perspective, the existing line is to its left (step_rev)
 	arc_t move = {0, 0, 2};
-	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	mm_insert(&ebc_mm, mm_make_key(&move), 1, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
@@ -1151,7 +1166,7 @@ TEST(test_ebc_extend_right) {
 
 	// Add p1 tile at (0,0,0) — the existing line at (0,0,1) is to its right
 	arc_t move = {0, 0, 0};
-	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	mm_insert(&ebc_mm, mm_make_key(&move), 1, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
@@ -1172,7 +1187,7 @@ TEST(test_ebc_connect_two_lines) {
 
 	// Fill the gap — connects both lines
 	arc_t move = {0, 0, 1};
-	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	mm_insert(&ebc_mm, mm_make_key(&move), 1, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
@@ -1194,7 +1209,7 @@ TEST(test_ebc_multi_direction) {
 
 	// Add a tile that might interact with multiple directions
 	arc_t move = {0, 0, 2};
-	mm_insert(&ebc_mm, mm_make_key(&move), 0);
+	mm_insert(&ebc_mm, mm_make_key(&move), 0, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 0);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
@@ -1215,7 +1230,7 @@ TEST(test_ebc_enemy_neighbor) {
 
 	// Add p1 at (0,0,2) — has enemy p2 neighbor to left at (0,0,1)
 	arc_t move = {0, 0, 2};
-	mm_insert(&ebc_mm, mm_make_key(&move), 1);
+	mm_insert(&ebc_mm, mm_make_key(&move), 1, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 1);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
@@ -1241,7 +1256,7 @@ TEST(test_ebc_large_board) {
 
 	// Add a move and check lm is restored
 	arc_t move = {0, -4, -2};
-	mm_insert(&ebc_mm, mm_make_key(&move), 0);
+	mm_insert(&ebc_mm, mm_make_key(&move), 0, 0);
 	evaluate_board_cached(&ebc_mm, &ebc_cmm, &ebc_lm, &move, 0);
 	mm_remove(&ebc_mm, mm_make_key(&move));
 
