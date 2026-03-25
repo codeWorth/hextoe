@@ -1,4 +1,5 @@
 import ctypes
+import logging
 import os
 import asyncio
 import time
@@ -55,7 +56,7 @@ def proc_eval_task(engine):
         if num_moves > 0:
             moves_list = moves_list[:num_moves]
 
-        move = do_evaluate_ahead(moves_list)
+        move = do_evaluate_ahead(moves_list, game_id)
 
         # For bot games with num_moves==0, add moves to the DB
         if is_bot and num_moves == 0 and move is not None and not game.is_complete:
@@ -89,7 +90,7 @@ def proc_eval_task(engine):
                         {"a": int(m.a), "r": m.r, "c": m.c, "p1": is_player_one(m.move_index)}
                         for m in moves
                     ]
-                    move = do_evaluate_ahead(moves_list)
+                    move = do_evaluate_ahead(moves_list, game_id)
 
         _loop.call_soon_threadsafe(eval_task.future_eval.set_result, move)
 
@@ -109,7 +110,14 @@ def evaluate_ahead(game_id, num_moves):
         return eval_task.future_eval
 
 
-def do_evaluate_ahead(moves):
+_eval_logger = logging.getLogger("evaluate_ahead")
+_eval_log_handler = logging.FileHandler("evaluate_ahead.log")
+_eval_log_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+_eval_logger.addHandler(_eval_log_handler)
+_eval_logger.setLevel(logging.INFO)
+
+
+def do_evaluate_ahead(moves, game_id):
     """Run minimax evaluation on the given moves.
 
     moves: list of dicts with keys "a", "r", "c", "p1"
@@ -126,10 +134,14 @@ def do_evaluate_ahead(moves):
     best_r = ctypes.c_int()
     best_c = ctypes.c_int()
 
+    start = time.monotonic()
     ok = _lib.evaluate_ahead(a_arr, r_arr, c_arr, p1_arr, n,
                             ctypes.byref(best_a),
                             ctypes.byref(best_r),
                             ctypes.byref(best_c))
+    elapsed_ms = (time.monotonic() - start) * 1000
+    _eval_logger.info("game_id=%s n=%d elapsed=%.1fms", game_id, n, elapsed_ms)
+
     if not ok:
         return None
 
