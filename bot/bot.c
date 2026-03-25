@@ -715,7 +715,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, line_map_t *lm,
 	INIT_STACK(&impact_moves, impact_entries, MAX_EVAL_WIDTH);
 	was_p1 = is_p1_for_turn(mm->mm_stack_size - 1);
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
-	if(depth >= 0) {
+	if(depth == 0) {
 		current_eval = evaluate_board(mm, candidate_moves, lm);
 		m_c = 0;
 	} else {
