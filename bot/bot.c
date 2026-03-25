@@ -350,6 +350,7 @@ evaluate_board(move_map_t *mm, move_map_t *cmm, line_map_t *lm)
 			PUT_FLAG(flags, LM_TERM_CLOSE, term_res == CLOSE_TERM);
 			PUT_FLAG(flags, LM_TERM_FAR, term_res == FAR_TERM);
 			PUT_FLAG(flags, LM_DEST_A, far_arc.a);
+			DEBUG_ASSERT(lm_get(lm, key) == NULL);
 			lm_insert(lm, key, score, len, delta_r, delta_c, flags);
 		}
 	}
@@ -481,6 +482,10 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 			// Calculate the new difference
 			dr = darc.r - arc_l.r;
 			dc = darc.c - arc_l.c;
+			if(!IS_FLAG_SET(flags, LM_TERM_CLOSE) &&
+			   !IS_FLAG_SET(flags, LM_TERM_FAR)) {
+				score *= 2;
+			}
 			entry = lm_insert(lm, l_entry->lme_key, score, len, dr, dc, flags);
 			SET_FLAG(l_entry->lme_flags, LM_SKIPPED);
 			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack),
@@ -519,6 +524,11 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 			dc = darc.c - move.c;
 			// Insert the new line
 			key = lm_mmkey2lmkey(home_key, j);
+			if(!IS_FLAG_SET(flags, LM_TERM_CLOSE) &&
+			   !IS_FLAG_SET(flags, LM_TERM_FAR)) {
+				score *= 2;
+			}
+			DEBUG_ASSERT(lm_get(lm, key) == NULL);
 			entry = lm_insert(lm, key, score, len, dr, dc, flags);
 			// This one isn't covering up an existing entry at this location.
 			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), false);
@@ -552,6 +562,10 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 			dr = arc_r.r - arc_l.r;
 			dc = arc_r.c - arc_l.c;
 			// Insert the new line
+			if(!IS_FLAG_SET(flags, LM_TERM_CLOSE) &&
+			   !IS_FLAG_SET(flags, LM_TERM_FAR)) {
+				score *= 2;
+			}
 			entry = lm_insert(lm, l_entry->lme_key, score, len, dr, dc, flags);
 			SET_FLAG(l_entry->lme_flags, LM_SKIPPED);
 			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), true);
@@ -574,6 +588,10 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 		dc = arc_r.c - move.c;
 		// Insert the new line
 		key = lm_mmkey2lmkey(home_key, j);
+		if(!IS_FLAG_SET(flags, LM_TERM_CLOSE) &&
+		   !IS_FLAG_SET(flags, LM_TERM_FAR)) {
+			score *= 2;
+		}
 		entry = lm_insert(lm, key, score, len, dr, dc, flags);
 		PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), false);
 
