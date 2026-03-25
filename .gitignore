@@ -17,11 +17,10 @@ venv/
 .idea/
 
 # Binary
-bot
-bot.dSYM/
-libbot.so
+bot/bot
 bot_test
-bot_demo
-
+bot/bot_demo
+*.so
+*.dSYM/
 # Test code
 *.tmp

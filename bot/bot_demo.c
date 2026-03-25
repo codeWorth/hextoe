@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <time.h>
-#include "bot.c"
+#include "bot.h"
 
 int
 main(int argc, char const *argv[])
@@ -25,6 +25,5 @@ main(int argc, char const *argv[])
 	} else {
 		printf("Failed to find move.");
 	}
-	printf("sizeof mm_entry_t = %d\n", sizeof(mm_entry_t));
 	return 0;
 }
