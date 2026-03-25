@@ -12,10 +12,9 @@ typedef uint64_t	lm_key;
 #define LME_INDEX(key)	(HASH_FN(key) & LM_MASK)
 
 
-#define LM_TERM_CLOSE	0x1
+#define LM_TERM_CLOSE		0x1
 #define LM_TERM_FAR		0x2
 #define LM_DEST_A		0x4
-#define LM_SKIPPED		0x8
 
 #define LME_IS_TERM_CLOSE(lme)		\
 	IS_FLAG_SET((lme)->lme_flags, LM_TERM_CLOSE)
@@ -27,7 +26,13 @@ typedef uint64_t	lm_key;
 	IS_FLAG_SET((lme)->lme_flags, LM_DEST_A)
 
 #define LME_IS_SKIPPED(lme)			\
-	IS_FLAG_SET((lme)->lme_flags, LM_SKIPPED)
+	((lme)->lme_skipped_count > 0)
+
+#define LME_IS_TERM_NEITHER(lme)		\
+	(!LME_IS_TERM_CLOSE(lme) && !LME_IS_TERM_FAR(lme))
+
+#define IS_TERM_BOTH(flags)			\
+	(IS_FLAG_SET(flags, LM_TERM_CLOSE) && IS_FLAG_SET(flags, LM_TERM_FAR))
 
 #define PUSH_LINE_MOD(line_mods, sz, index, skipped_below) ({	\
 	(line_mods)[sz].me_stack_index = (index);					\
@@ -44,6 +49,7 @@ typedef struct lm_entry {
 	int8_t		lme_dl_r;
 	int8_t		lme_dl_c;
 	uint8_t		lme_flags;
+	uint8_t		lme_skipped_count;
 } lm_entry_t;
 
 typedef struct line_map {
@@ -67,5 +73,6 @@ extern lm_entry_t * lm_insert(line_map_t *, lm_key, int16_t, uint8_t, int8_t,
 							  int8_t, uint8_t);
 extern lm_entry_t * lm_get(line_map_t *, lm_key);
 extern void lm_remove(line_map_t *, mod_entry_t *);
+extern void lm_mark_skipped(lm_entry_t *);
 
 #endif

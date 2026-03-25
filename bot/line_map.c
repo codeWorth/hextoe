@@ -57,7 +57,6 @@ lm_insert(line_map_t *lme, lm_key key, int16_t score, uint8_t length,
 {
 	lm_entry_t	*new_entry;
 
-	DEBUG_ASSERT(score != 0);
 	DEBUG_ASSERT(!(delta_r == 0 && delta_c == 0 &&
 		     (lm_key_get_a(key) == IS_FLAG_SET(flags, LM_DEST_A))));
 	// MAP_NEW_ENTRY inserts at the head, and MAP_GET searches starting from
@@ -98,14 +97,14 @@ lm_remove(line_map_t *lm, mod_entry_t *mod)
 	if(LME_IS_SKIPPED(node)) {
 		// If this element was skipped, and we were asked to remove it,
 		// it really means we were asking to remove the "mask" on it.
-		RESET_FLAG(node->lme_flags, LM_SKIPPED);
+		node->lme_skipped_count--;
 	} else {
 		// We may need to look for an element under this one to unskip.
 		if(mod->me_skipped_below) {
 			next = node->lme_next;
 			while(next != node) {
 				if(next->lme_key == node->lme_key) {
-					RESET_FLAG(next->lme_flags, LM_SKIPPED);
+					next->lme_skipped_count--;
 					break;
 				}
 				next = next->lme_next;
@@ -118,4 +117,13 @@ lm_remove(line_map_t *lm, mod_entry_t *mod)
 		lm->lm_stack_size--;
 		DLL_DELETE(node, lme_next, lme_prev);
 	}
+}
+
+void
+lm_mark_skipped(lm_entry_t *entry)
+{
+
+	// Temporary assert, I'm just curious
+	DEBUG_ASSERT(entry->lme_skipped_count == 0);
+	entry->lme_skipped_count++;
 }
