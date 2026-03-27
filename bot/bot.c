@@ -4,6 +4,7 @@
 #include "line_map.h"
 #include "bot_util.h"
 #include "bot.h"
+#include "bot_params.h"
 
 #define P1_WON		262144
 #define P2_WON		-262144
@@ -50,13 +51,6 @@
 	}				\
 	score;				\
 })
-
-#ifndef EVAL_CUSTOM
-#define MAX_EVAL_DEPTH	9
-#define MAX_EVAL_WIDTH	15
-#define MIN_EVAL_WIDTH	4
-#define EVAL_WIDTH_STEP	2
-#endif
 
 int
 look_moves_at_depth(int depth)
@@ -138,7 +132,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
 	   void (*step_rev)(arc_t *, arc_t *))
 {
 	int		i, negate_score;
-	bool		is_p1, terminated;
+	bool		is_p1, terminated, found_blank;
 	arc_t		cur_arc, prev_arc, next_arc;
 	uint64_t	prev_key, next_key;
 	mm_entry_t	*prev_entry, *next_entry;
@@ -399,6 +393,32 @@ walk_dir(move_map_t *mm, arc_t *start,
 	return found_line;
 }
 
+int
+sum_score(line_map_t *lm)
+{
+	int		i, score, total_score = 0;
+	lm_entry_t	*entry;
+
+	// Now that we've populated the line map with the new lines, find the total score
+	for(i = 0; i < lm->lm_stack_size; i++) {
+		entry = &lm->lm_stack[i];
+		if(LME_IS_SKIPPED(entry)) continue;
+		if(entry->lme_score == 0) continue;
+
+		DEBUG_ASSERT(lm_get(lm, entry->lme_key) == entry);
+		score = entry->lme_score;
+		if(LME_IS_TERM_NEITHER(entry)) {
+			score *= 2;
+		}
+		// If we got a winner, just return that.
+		if(score == P1_WON || score == P2_WON) {
+			return score;
+		}
+		total_score += score;
+	}
+	return total_score;
+}
+
 // We're generating the line map based on the given move map, but we just update
 // in the vicinity of home_key. Populates the modified_lines paramter with a list
 // of line map entries which had new lines. All the caller must do to undo
@@ -412,7 +432,7 @@ int
 evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 		      bool is_p1, mod_entry_t *line_mods, int *n_modified)
 {
-	int 		i, j, score, len, flags, total_score = 0;
+	int 		j, len, flags, score, total_score = 0;
 	int		dr, dc, negate, l_mod = 0;
 	bool		friend_left, friend_right, found;
 	arc_t		arc_r, arc_l, move, darc;
@@ -644,25 +664,7 @@ handle_enemies:
 		}
 	}
 
-	// Now that we've populated the line map with the new lines, find the total score
-	for(i = 0; i < lm->lm_stack_size; i++) {
-		entry = &lm->lm_stack[i];
-		if(LME_IS_SKIPPED(entry)) continue;
-		if(entry->lme_score == 0) continue;
-
-		DEBUG_ASSERT(lm_get(lm, entry->lme_key) == entry);
-		score = entry->lme_score;
-		if(LME_IS_TERM_NEITHER(entry)) {
-			score *= 2;
-		}
-		// If we got a winner, just return that.
-		if(score == P1_WON || score == P2_WON) {
-			total_score = score;
-			goto out;
-		}
-		total_score += score;
-	}
-
+	total_score = sum_score(lm);
 out:
 	*n_modified = l_mod;
 	return total_score;
@@ -692,18 +694,18 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, line_map_t *lm,
 {
 	bool		is_p1, was_p1;
 	int		i, sub_eval, look_moves, current_eval, best_score, m_c;
-	int		eval2, j;
-	arc_t		arc;
-	lm_key		lmkey;
 	uint64_t	current_move, best_move;
-	line_map_t	lm_copy, lm_copy2;
-	lm_entry_t	*lm_entry1, *lm_entry2;
 	mm_entry_t	*kth_largest, *entry;
 	move_list_t	impact_moves;
 	mod_entry_t	line_mods[12];
 	move_entry_t	impact_entries[MAX_EVAL_WIDTH];
-
 #ifdef DEBUG
+	int		eval2, j;
+	arc_t		arc;
+	lm_key		lmkey;
+	line_map_t	lm_copy, lm_copy2;
+	lm_entry_t	*lm_entry1, *lm_entry2;
+
 	if(depth > 0) {
 		lm_init(&lm_copy);
 		for(i = 0; i < lm->lm_stack_size; i++) {
@@ -721,7 +723,7 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, line_map_t *lm,
 	} else {
 		current_eval = evaluate_board_cached(mm, lm, prev_move, was_p1,
 						     line_mods, &m_c);
-		assert(m_c <= 12);
+		DEBUG_ASSERT(m_c <= 12);
 #ifdef DEBUG
 		eval2 = evaluate_board(mm, candidate_moves, &lm_copy2);
 		if(current_eval == P1_WON || current_eval == P2_WON) {
@@ -807,7 +809,7 @@ skip_compare:
 				   entry->mme_value);
 		}
 	}
-	assert(impact_moves.ml_len < look_moves);
+	DEBUG_ASSERT(impact_moves.ml_len < look_moves);
 	// Now copy with impact == kth until we fill enough slots.
 	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
 		entry = &candidate_moves->mm_stack[i];

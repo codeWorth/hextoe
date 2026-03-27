@@ -110,10 +110,10 @@ mm_remove(move_map_t *mm, mm_key key)
 	mm_entry_t	*node;
 
 	node = mm_get(mm, key);
-	assert(node != NULL);
+	DEBUG_ASSERT(node != NULL);
 	// Remove this element. It needs to be the top item of the stack. Therefore,
 	// callers are required to remove in LIFO order.
-	assert(node == &mm->mm_stack[mm->mm_stack_size - 1]);
+	DEBUG_ASSERT(node == &mm->mm_stack[mm->mm_stack_size - 1]);
 	mm->mm_stack_size--;
 	DLL_DELETE(node, mme_next, mme_prev);
 }

@@ -24,7 +24,7 @@
 #define MASK_61		0x1FFFFFFFFFFFFFFF
 
 #define PUSH_STACK(ml, move, score) ({				\
-	assert((ml)->ml_len < (ml)->ml_size);			\
+	DEBUG_ASSERT((ml)->ml_len < (ml)->ml_size);		\
 	(ml)->ml_moves[((ml)->ml_len)].mle_move = (move);	\
 	(ml)->ml_moves[((ml)->ml_len)].mle_score = (score);	\
 	(ml)->ml_len++;						\
