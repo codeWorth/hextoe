@@ -1,9 +1,9 @@
 #ifndef __BOT_UTIL__
 #define __BOT_UTIL__
 
-#include <stdint.h>
 #include <assert.h>
 #include <stddef.h>
+#include "arc.h"
 
 #ifdef DEBUG
 #define DEBUG_ASSERT(cond)	assert(cond)
@@ -102,12 +102,6 @@ typedef struct move_list {
 	int		ml_len;
 	int		ml_size;
 } move_list_t;
-
-typedef struct arc {
-	int32_t	r;
-	int32_t	c;
-	uint8_t	a;
-} arc_t;
 
 extern uint64_t splitmix64(uint64_t);
 extern uint64_t fnv_hash(uint64_t);

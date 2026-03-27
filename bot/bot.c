@@ -13,12 +13,26 @@
 #define NO_TERM		1
 #define BOTH_TERM	2
 
+arc_t	arc_sr = {0, 1, 0};
+arc_t	arc_sl = {0, -1, 0};
+arc_t	arc_sdr = {0, 0, 1};
+arc_t	arc_sul = {-1, -1, 1};
+arc_t	arc_sdl = {0, -1, 1};
+arc_t	arc_sur = {-1, 0, 1};
+
 #define STEP_0		step_r
 #define STEP_R0		step_l
 #define STEP_1		step_dr
 #define STEP_R1		step_ul
 #define STEP_2		step_dl
 #define STEP_R2		step_ur
+
+#define ARC_S0		(&arc_sr)
+#define ARC_SR0		(&arc_sl)
+#define ARC_S1		(&arc_sdr)
+#define ARC_SR1		(&arc_sul)
+#define ARC_S2		(&arc_sdl)
+#define ARC_SR2		(&arc_sur)
 
 #define L1_SCORE	1
 #define L2_SCORE	8
@@ -246,14 +260,12 @@ walk_dir(move_map_t *mm, arc_t *start,
 }
 
 void
-walk_count(arc_t start, arc_t *end, void (*step)(arc_t *, arc_t *), int count)
+walk_count(arc_t* start, arc_t *end, arc_t *dir, uint8_t count)
 {
 
 	DEBUG_ASSERT(count > 0);
-	for(; count > 0; count--) {
-		step(&start, end);
-		start = *end;
-	}
+	*end = *start;
+	arc_mulinc(end, dir, count);
 }
 
 // Populate the given candidate move map with moves. Loop over every line in
@@ -281,13 +293,13 @@ populate_cmm(move_map_t *mm, move_map_t *cmm, line_map_t *lm)
 		dir = lm_key2dir(lm_entry->lme_key);
 		if(dir == 0) {
 			STEP_R0(&arc, &l_arc);
-			walk_count(arc, &r_arc, STEP_0, LME_GET_LENGTH(lm_entry));
+			walk_count(&arc, &r_arc, ARC_S0, LME_GET_LENGTH(lm_entry));
 		} else if(dir == 1) {
 			STEP_R1(&arc, &l_arc);
-			walk_count(arc, &r_arc, STEP_1, LME_GET_LENGTH(lm_entry));
+			walk_count(&arc, &r_arc, ARC_S1, LME_GET_LENGTH(lm_entry));
 		} else {
 			STEP_R2(&arc, &l_arc);
-			walk_count(arc, &r_arc, STEP_2, LME_GET_LENGTH(lm_entry));
+			walk_count(&arc, &r_arc, ARC_S2, LME_GET_LENGTH(lm_entry));
 		}
 		move_close = mm_arc2key(&l_arc);
 		move_far = mm_arc2key(&r_arc);

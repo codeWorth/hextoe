@@ -24,7 +24,7 @@ compare_evals(int *as, int *rs, int *cs, int *is_p1s, int i)
 int
 main(int argc, char const *argv[])
 {
-	int	i = 3;
+	int	i = N_MOVES;
 	bool 	found_move;
 	int	best_a, best_r, best_c;
 	int as[N_MOVES] =  {0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0};
@@ -50,6 +50,7 @@ again:
 	} else {
 		printf("Failed to find move.");
 	}
+	return 0;
 
 	clock_gettime(CLOCK_MONOTONIC, &t0);
 	found_move = old_evaluate_ahead(as, rs, cs, is_p1s, i, &best_a, &best_r,
