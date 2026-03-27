@@ -5,14 +5,13 @@
 #include "bot_util.h"
 #include "bot.h"
 #include "bot_params.h"
+#include "old_bot.h"
 
 #define P1_WON		262144
 #define P2_WON		-262144
 
-#define CLOSE_TERM	1
-#define FAR_TERM	2
-#define NO_TERM		3
-#define BOTH_TERM	4
+#define NO_TERM		1
+#define BOTH_TERM	2
 
 #define STEP_0		step_r
 #define STEP_R0		step_l
@@ -128,11 +127,11 @@ step_ur(arc_t *arc, arc_t *darc)
 
 int
 score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
-	   arc_t *end_arc, void (*step)(arc_t *, arc_t *),
+	   void (*step)(arc_t *, arc_t *),
 	   void (*step_rev)(arc_t *, arc_t *))
 {
 	int		i, negate_score;
-	bool		is_p1, terminated, found_blank;
+	bool		is_p1, terminated;
 	arc_t		cur_arc, prev_arc, next_arc;
 	uint64_t	prev_key, next_key;
 	mm_entry_t	*prev_entry, *next_entry;
@@ -156,9 +155,7 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
 	// If we are p1, the score must be positive. If we are p1, the score must be
 	// negative.
 	negate_score = is_p1 ? 1 : -1;
-	cur_arc.a = arc->a;
-	cur_arc.r = arc->r;
-	cur_arc.c = arc->c;
+	cur_arc = *arc;
 	for(i = 0; i < 5; i++) {
 		step(&cur_arc, &next_arc);
 		next_key = mm_arc2key(&next_arc);
@@ -166,16 +163,12 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
 		// If we've reached the end of the line, and there's nothing blocking it,
 		// then we can return the score (doubled if not terminated on the prev side)
 		if(next_entry == NULL) {
-			// A good candidate move is at the end of this line
-			end_arc->a = next_arc.a;
-			end_arc->r = next_arc.r;
-			end_arc->c = next_arc.c;
 			// We want to make high scores much more desirable. Otherwise, dense points,
 			// a.k.a. locations with many nearby tiles, get overrepresented.
 			*len = (i+1);
 			*score = SCORE_FOR_LEN(i+1) * negate_score;
 			if(terminated) {
-				return CLOSE_TERM;
+				return 0;
 			} else {
 				return NO_TERM;
 			}
@@ -183,21 +176,15 @@ score_line(move_map_t *mm, mm_entry_t *entry, arc_t *arc, int *len, int *score,
 		// If we find an opponent tile, we've ended here. We may have 0 score,
 		// or normal score if the other side is not terminated.
 		if(next_entry->mme_value != is_p1) {
-			end_arc->a = next_arc.a;
-			end_arc->r = next_arc.r;
-			end_arc->c = next_arc.c;
 			*len = (i+1);
+			*score = SCORE_FOR_LEN(i+1) * negate_score;
 			if(terminated) {
-				*score = 0;
 				return BOTH_TERM;
 			} else {
-				*score = SCORE_FOR_LEN(i+1) * negate_score;
-				return FAR_TERM;
+				return 0;
 			}
 		}
-		cur_arc.a = next_arc.a;
-		cur_arc.r = next_arc.r;
-		cur_arc.c = next_arc.c;
+		cur_arc = next_arc;
 	}
 	// We never hit an opponent or a blank spot. So that means we have 6 in a row,
 	// which is winning outright. Return P1_WON or P2_WON to represent that.
@@ -223,141 +210,6 @@ populate_move_map(move_map_t *mm, int* as, int* rs, int* cs, int* is_p1s,
 		key = mm_arc2key(&arc);
 		mm_insert(mm, key, is_p1s[i]);
 	}
-}
-
-// Populate the given candidate move map with moves. Loop over every line in
-// the line map. For each line, retrieve which ends are terminated. For each
-// end which is not terminated, insert or update the cmm with the move and its
-// score (absolute value to highlight important tiles for either player).
-void
-populate_cmm(move_map_t *mm, move_map_t *cmm, line_map_t *lm)
-{
-	int		i, dir, score;
-	bool		term_close, term_far;
-	arc_t		arc, darc;
-	mm_key		move_close, move_far;
-	mm_entry_t	*cm_entry;
-	lm_entry_t	*lm_entry;
-
-	// Clear the cmm
-	mm_init(cmm);
-	for(i = 0; i < lm->lm_stack_size; i++) {
-		lm_entry = &lm->lm_stack[i];
-		if(LME_IS_SKIPPED(lm_entry)) continue;
-		if(lm_entry->lme_score == 0) continue;
-
-		score = lm_entry->lme_score;
-		score = score > 0 ? score : -score;
-		if(LME_IS_TERM_NEITHER(lm_entry)) {
-			score *= 2;
-		}
-		lm_decode_key(lm_entry->lme_key, &arc);
-		term_close = LME_IS_TERM_CLOSE(lm_entry);
-		term_far = LME_IS_TERM_FAR(lm_entry);
-
-		if(!term_close) {
-			dir = lm_key2dir(lm_entry->lme_key);
-			if(dir == 0) {
-				STEP_R0(&arc, &darc);
-			} else if(dir == 1) {
-				STEP_R1(&arc, &darc);
-			} else {
-				STEP_R2(&arc, &darc);
-			}
-			move_close = mm_arc2key(&darc);
-			DEBUG_ASSERT(mm_get(mm, move_close) == NULL);
-
-			cm_entry = mm_get(cmm, move_close);
-			if(cm_entry == NULL) {
-				mm_insert(cmm, move_close, score);
-			} else {
-				cm_entry->mme_value += score;
-			}
-		}
-		if(!term_far) {
-			arc.a = LME_GET_DEST_A(lm_entry);
-			arc.r += lm_entry->lme_dl_r;
-			arc.c += lm_entry->lme_dl_c;
-			move_far = mm_arc2key(&arc);
-			DEBUG_ASSERT(mm_get(mm, move_far) == NULL);
-
-			cm_entry = mm_get(cmm, move_far);
-			if(cm_entry == NULL) {
-				mm_insert(cmm, move_far, score);
-			} else {
-				cm_entry->mme_value += score;
-			}
-		}
-	}
-}
-
-// Iterate over every move in the current board state. For each move, check all the
-// directions to see if it's part of a line (we check right, down right, down left,
-// since we don't need to check the opposite directions).
-// Each move will give us a score and some candidate moves.
-// If we get P1_WON or P2_WON, it means that move is connected to a winning row.
-// If we get score = 0, then it's a no-op.
-// Otherwise, we put the move into the candidates table, adding the score if the
-// move is already in the table. We also add up the total score for every move.
-// This should be only be called at the top level of iteration. On deeper levels,
-// we should reuse line map results, and just update based on the one new move.
-int
-evaluate_board(move_map_t *mm, move_map_t *cmm, line_map_t *lm)
-{
-	int 		i, j, len, term_res, score, total_score = 0;
-	int		delta_r, delta_c, flags = 0;
-	arc_t		arc, far_arc;
-	lm_key		key;
-	mm_entry_t	*entry;
-
-	lm_init(lm);
-	for(i = 0; i < mm->mm_stack_size; i++) {
-		entry = &mm->mm_stack[i];
-		mm_decode_key(entry->mme_key, &arc);
-		for(j = 0; j < 3; j++) {
-			if(j == 0) {
-				term_res = score_line(mm, entry, &arc, &len,
-						      &score, &far_arc,
-						      STEP_0, STEP_R0);
-			} else if(j == 1) {
-				term_res = score_line(mm, entry, &arc, &len,
-						      &score, &far_arc,
-						      STEP_1, STEP_R1);
-			} else {
-				term_res = score_line(mm, entry, &arc, &len,
-						      &score, &far_arc,
-						      STEP_2, STEP_R2);
-			}
-			// If we got a winner, just return that.
-			if(score == P1_WON || score == P2_WON) {
-				return score;
-			}
-			// If this isn't the start of the line, skip it.
-			if(term_res < 0) {
-				continue;
-			}
-
-			// Insert line map entry for the line we just scored.
-			flags = 0;
-			key = lm_mmkey2lmkey(entry->mme_key, j);
-			delta_r = far_arc.r - arc.r;
-			delta_c = far_arc.c - arc.c;
-			PUT_FLAG(flags, LM_TERM_CLOSE, (term_res == CLOSE_TERM ||
-							term_res == BOTH_TERM));
-			PUT_FLAG(flags, LM_TERM_FAR, (term_res == FAR_TERM ||
-						      term_res == BOTH_TERM));
-			PUT_FLAG(flags, LM_DEST_A, far_arc.a);
-			DEBUG_ASSERT(lm_get(lm, key) == NULL);
-			lm_insert(lm, key, score, len, delta_r, delta_c, flags);
-
-			// Add up total_score
-			if(term_res == NO_TERM) {
-				score *= 2;
-			}
-			total_score += score;
-		}
-	}
-	return total_score;
 }
 
 // Walk in the given direction until the line ends. Return false if no line
@@ -393,34 +245,149 @@ walk_dir(move_map_t *mm, arc_t *start,
 	return found_line;
 }
 
-int
-sum_score(line_map_t *lm)
+void
+walk_count(arc_t start, arc_t *end, void (*step)(arc_t *, arc_t *), int count)
 {
-	int		i, score, total_score = 0;
-	lm_entry_t	*entry;
 
-	// Now that we've populated the line map with the new lines, find the total score
+	DEBUG_ASSERT(count > 0);
+	for(; count > 0; count--) {
+		step(&start, end);
+		start = *end;
+	}
+}
+
+// Populate the given candidate move map with moves. Loop over every line in
+// the line map. For each line, retrieve which ends are terminated. For each
+// end which is not terminated, insert or update the cmm with the move and its
+// score (absolute value to highlight important tiles for either player).
+// Returns the total score.
+int
+populate_cmm(move_map_t *mm, move_map_t *cmm, line_map_t *lm)
+{
+	int		i, score, dir, total_score = 0;
+	bool		term_close, term_far;
+	arc_t		arc, l_arc, r_arc;
+	mm_key		move_close, move_far;
+	mm_entry_t	*cm_entry;
+	lm_entry_t	*lm_entry;
+
+	// Clear the cmm
+	mm_init(cmm);
 	for(i = 0; i < lm->lm_stack_size; i++) {
-		entry = &lm->lm_stack[i];
-		if(LME_IS_SKIPPED(entry)) continue;
-		if(entry->lme_score == 0) continue;
+		lm_entry = &lm->lm_stack[i];
+		if(LME_IS_SKIPPED(lm_entry)) continue;
 
-		DEBUG_ASSERT(lm_get(lm, entry->lme_key) == entry);
-		score = entry->lme_score;
-		if(LME_IS_TERM_NEITHER(entry)) {
+		lm_decode_key(lm_entry->lme_key, &arc);
+		dir = lm_key2dir(lm_entry->lme_key);
+		if(dir == 0) {
+			STEP_R0(&arc, &l_arc);
+			walk_count(arc, &r_arc, STEP_0, LME_GET_LENGTH(lm_entry));
+		} else if(dir == 1) {
+			STEP_R1(&arc, &l_arc);
+			walk_count(arc, &r_arc, STEP_1, LME_GET_LENGTH(lm_entry));
+		} else {
+			STEP_R2(&arc, &l_arc);
+			walk_count(arc, &r_arc, STEP_2, LME_GET_LENGTH(lm_entry));
+		}
+		move_close = mm_arc2key(&l_arc);
+		move_far = mm_arc2key(&r_arc);
+		term_close = mm_get(mm, move_close) != NULL;
+		term_far = mm_get(mm, move_far) != NULL;
+		// If we have no space on either side, there's nothing to do
+		// here.
+		if(term_close && term_far) {
+			continue;
+		}
+
+		score = lm_entry->lme_score;
+		if(!term_close && !term_far) {
 			score *= 2;
 		}
-		// If we got a winner, just return that.
-		if(score == P1_WON || score == P2_WON) {
-			return score;
-		}
 		total_score += score;
+		score = score > 0 ? score : -score;
+
+		if(!term_close) {
+			cm_entry = mm_get(cmm, move_close);
+			if(cm_entry == NULL) {
+				mm_insert(cmm, move_close, score);
+			} else {
+				cm_entry->mme_value += score;
+			}
+		}
+		if(!term_far) {
+			cm_entry = mm_get(cmm, move_far);
+			if(cm_entry == NULL) {
+				mm_insert(cmm, move_far, score);
+			} else {
+				cm_entry->mme_value += score;
+			}
+		}
+	}
+	return total_score;
+}
+
+// Iterate over every move in the current board state. For each move, check all the
+// directions to see if it's part of a line (we check right, down right, down left,
+// since we don't need to check the opposite directions).
+// Each move will give us a score and some candidate moves.
+// If we get P1_WON or P2_WON, it means that move is connected to a winning row.
+// If we get score = 0, then it's a no-op.
+// Otherwise, we put the move into the candidates table, adding the score if the
+// move is already in the table. We also add up the total score for every move.
+// This should be only be called at the top level of iteration. On deeper levels,
+// we should reuse line map results, and just update based on the one new move.
+int
+evaluate_board(move_map_t *mm, line_map_t *lm)
+{
+	int 		i, j, len, term_res, score, total_score = 0;
+	arc_t		arc;
+	lm_key		key;
+	mm_entry_t	*entry;
+
+	lm_init(lm);
+	for(i = 0; i < mm->mm_stack_size; i++) {
+		entry = &mm->mm_stack[i];
+		mm_decode_key(entry->mme_key, &arc);
+		for(j = 0; j < 3; j++) {
+			if(j == 0) {
+				term_res = score_line(mm, entry, &arc, &len,
+						      &score, STEP_0, STEP_R0);
+			} else if(j == 1) {
+				term_res = score_line(mm, entry, &arc, &len,
+						      &score, STEP_1, STEP_R1);
+			} else {
+				term_res = score_line(mm, entry, &arc, &len,
+						      &score, STEP_2, STEP_R2);
+			}
+			// If we got a winner, just return that.
+			if(score == P1_WON || score == P2_WON) {
+				return score;
+			}
+			// If this isn't the start of the line, skip it.
+			if(term_res < 0) {
+				continue;
+			}
+
+			// Insert line map entry for the line we just scored.
+			key = lm_mmkey2lmkey(entry->mme_key, j);
+			DEBUG_ASSERT(lm_get(lm, key) == NULL);
+			lm_insert(lm, key, score, len);
+
+			// Add up total_score
+			if(term_res == BOTH_TERM) {
+				continue;
+			}
+			if(term_res == NO_TERM) {
+				score *= 2;
+			}
+			total_score += score;
+		}
 	}
 	return total_score;
 }
 
 // We're generating the line map based on the given move map, but we just update
-// in the vicinity of home_key. Populates the modified_lines paramter with a list
+// in the vicinity of home_key. Populates the modified_lines paramwter with a list
 // of line map entries which had new lines. All the caller must do to undo
 // everything that this function did, is go through the list and call mm_remove
 // on each key. That's because we have inserted lines at each of those locations,
@@ -428,14 +395,15 @@ sum_score(line_map_t *lm)
 // just have to delete to undo.
 // It's very important to delete from the modified_lines list in reverse order,
 // because that lets us unwind the underlying stack in the line map.
+// Returns a winning score if someone won, otherwise returns 0
 int
 evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
-		      bool is_p1, mod_entry_t *line_mods, int *n_modified)
+		      bool is_p1, mod_entry_t *line_mods, int *lmods_count)
 {
-	int 		j, len, flags, score, total_score = 0;
-	int		dr, dc, negate, l_mod = 0;
+	int 		j, len, score;
+	int		negate, l_mod = 0;
 	bool		friend_left, friend_right, found;
-	arc_t		arc_r, arc_l, move, darc;
+	arc_t		arc_r, arc_l, move;
 	lm_key		key;
 	lm_entry_t	*r_entry, *l_entry, *entry;
 
@@ -447,7 +415,6 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 	// think that way, but really it means forward and reverse as defined
 	// by the STEP_0, STEP_R0, etc macros above.
 	for(j = 0; j < 3; j++) {
-		flags = 0;
 		// First, look right by 1.
 		if(j == 0) {
 			STEP_0(&move, &arc_r);
@@ -494,30 +461,13 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 			// Finally, it will have dest_a, delta r, and delta c based
 			// on the right side.
 			// The key for the joined line will be the left entry's.
-			len = l_entry->lme_length + r_entry->lme_length + 1;
+			len = LME_GET_LENGTH(l_entry) + LME_GET_LENGTH(r_entry) + 1;
 			if(len >= 6) {
-				total_score = is_p1 ? P1_WON : P2_WON;
-				goto out;
+				*lmods_count = l_mod;
+				return is_p1 ? P1_WON : P2_WON;
 			}
-			PUT_FLAG(flags, LM_TERM_CLOSE,
-				 LME_IS_TERM_CLOSE(l_entry));
-			PUT_FLAG(flags, LM_TERM_FAR,
-				 LME_IS_TERM_FAR(r_entry));
-			if(IS_TERM_BOTH(flags)) {
-				score = 0;
-			} else {
-				score = SCORE_FOR_LEN(len) * negate;
-			}
-
-			PUT_FLAG(flags, LM_DEST_A, LME_GET_DEST_A(r_entry));
-			// Get the absolute position at the end
-			darc.r = arc_r.r + r_entry->lme_dl_r;
-			darc.c = arc_r.c + r_entry->lme_dl_c;
-			// Calculate the new difference
-			dr = darc.r - arc_l.r;
-			dc = darc.c - arc_l.c;
-			entry = lm_insert(lm, l_entry->lme_key, score, len, dr,
-					  dc, flags);
+			score = SCORE_FOR_LEN(len) * negate;
+			entry = lm_insert(lm, l_entry->lme_key, score, len);
 			lm_mark_skipped(l_entry);
 			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack),
 				      true);
@@ -533,42 +483,28 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 		if(r_entry != NULL && friend_right) {
 			// We need to make a new line starting at the current
 			// move's position. It will be the same as the line to our
-			// right, but one longer, and left side termiation will
+			// right, but one longer, and left side termination will
 			// be based on l_entry's existence.
 			// Also, we need to calculate the new delta.
 			// Finally, we mask the existing entry.
-			len = r_entry->lme_length + 1;
+			len = LME_GET_LENGTH(r_entry) + 1;
 			if(len >= 6) {
-				total_score = is_p1 ? P1_WON : P2_WON;
-				goto out;
+				*lmods_count = l_mod;
+				return is_p1 ? P1_WON : P2_WON;
 			}
-			PUT_FLAG(flags, LM_TERM_CLOSE, l_entry != NULL);
-			PUT_FLAG(flags, LM_TERM_FAR,
-				 LME_IS_TERM_FAR(r_entry));
-			if(IS_TERM_BOTH(flags)) {
-				score = 0;
-			} else {
-				score = SCORE_FOR_LEN(len) * negate;
-			}
+			score = SCORE_FOR_LEN(len) * negate;
 
-			PUT_FLAG(flags, LM_DEST_A, LME_GET_DEST_A(r_entry));
-			// Get the absolute position at the end
-			darc.r = arc_r.r + r_entry->lme_dl_r;
-			darc.c = arc_r.c + r_entry->lme_dl_c;
-			// Calculate the new difference
-			dr = darc.r - move.r;
-			dc = darc.c - move.c;
 			// Insert the new line
 			key = lm_mmkey2lmkey(home_key, j);
 			DEBUG_ASSERT(lm_get(lm, key) == NULL);
-			entry = lm_insert(lm, key, score, len, dr, dc, flags);
+			entry = lm_insert(lm, key, score, len);
 			// This one isn't covering up an existing entry at this location.
 			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), false);
 
 			// Mask the old one
 			lm_mark_skipped(r_entry);
 			PUSH_LINE_MOD(line_mods, l_mod, (r_entry - lm->lm_stack), 0);
-			goto handle_enemies;
+			continue;
 		}
 		// We only have a friend on the left side. We may or may not
 		// have an enemy on the right, so goto the handling for that when done.
@@ -580,31 +516,18 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 			// be based on the existence of r_entry on the right.
 			// The delta needs to extend by one.
 			// Unlike the above cases, there's nothing to mask.
-			len = l_entry->lme_length + 1;
+			len = LME_GET_LENGTH(l_entry) + 1;
 			if(len >= 6) {
-				total_score = is_p1 ? P1_WON : P2_WON;
-				goto out;
+				*lmods_count = l_mod;
+				return is_p1 ? P1_WON : P2_WON;
 			}
-			PUT_FLAG(flags, LM_TERM_CLOSE,
-				 LME_IS_TERM_CLOSE(l_entry));
-			PUT_FLAG(flags, LM_TERM_FAR, r_entry != NULL);
-			// If we're fully terminated, we just want to hide the
-			// current line, not insert a new one.
-			if(IS_TERM_BOTH(flags)) {
-				score = 0;
-			} else {
-				score = SCORE_FOR_LEN(len) * negate;
-			}
+			score = SCORE_FOR_LEN(len) * negate;
 
-			PUT_FLAG(flags, LM_DEST_A, arc_r.a);
-			// Calculate the new difference
-			dr = arc_r.r - arc_l.r;
-			dc = arc_r.c - arc_l.c;
 			// Insert the new line
-			entry = lm_insert(lm, l_entry->lme_key, score, len, dr, dc, flags);
+			entry = lm_insert(lm, l_entry->lme_key, score, len);
 			lm_mark_skipped(l_entry);
 			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), true);
-			goto handle_enemies;
+			continue;
 		}
 		// We've got no one around, or maybe just enemies. Therefore,
 		// this is a 1 long line. Create and insert it.
@@ -613,61 +536,15 @@ evaluate_board_cached(move_map_t *mm, line_map_t *lm, mm_key home_key,
 		// The tail location is arc_r, because that's where we looked to
 		// the right, similar to the case above. However, unlike the case
 		// above, the starting location is just the current move.
-		PUT_FLAG(flags, LM_TERM_CLOSE, l_entry != NULL);
-		PUT_FLAG(flags, LM_TERM_FAR, r_entry != NULL);
 		len = 1;
-		if(IS_TERM_BOTH(flags)) {
-			score = 0;
-		} else {
-			score = SCORE_FOR_LEN(len) * negate;
-		}
-		PUT_FLAG(flags, LM_DEST_A, arc_r.a);
-		// Calculate the new difference
-		dr = arc_r.r - move.r;
-		dc = arc_r.c - move.c;
+		score = SCORE_FOR_LEN(len) * negate;
 		// Insert the new line
 		key = lm_mmkey2lmkey(home_key, j);
-		entry = lm_insert(lm, key, score, len, dr, dc, flags);
+		entry = lm_insert(lm, key, score, len);
 		PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), false);
-
-handle_enemies:
-		// If we've got an enemy on either side, we need to mark them as
-		// terminated where this move is.
-		if(l_entry != NULL && !friend_left && !LME_IS_TERM_FAR(l_entry)) {
-			flags = l_entry->lme_flags;
-			SET_FLAG(flags, LM_TERM_FAR);
-			if(IS_TERM_BOTH(flags)) {
-				score = 0;
-			} else {
-				score = l_entry->lme_score;
-			}
-			entry = lm_insert(lm, l_entry->lme_key, score,
-				  l_entry->lme_length, l_entry->lme_dl_r,
-				  l_entry->lme_dl_c, flags);
-			lm_mark_skipped(l_entry);
-			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), true);
-		}
-		if(r_entry != NULL && !friend_right && !LME_IS_TERM_CLOSE(r_entry)) {
-			flags = r_entry->lme_flags;
-			SET_FLAG(flags, LM_TERM_CLOSE);
-			// If the right entry is now fully term, skip it.
-			if(IS_TERM_BOTH(flags)) {
-				score = 0;
-			} else {
-				score = r_entry->lme_score;
-			}
-			entry = lm_insert(lm, r_entry->lme_key, score,
-				  r_entry->lme_length, r_entry->lme_dl_r,
-				  r_entry->lme_dl_c, flags);
-			lm_mark_skipped(r_entry);
-			PUSH_LINE_MOD(line_mods, l_mod, (entry - lm->lm_stack), true);
-		}
 	}
-
-	total_score = sum_score(lm);
-out:
-	*n_modified = l_mod;
-	return total_score;
+	*lmods_count = l_mod;
+	return 0;
 }
 
 void
@@ -704,7 +581,9 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, line_map_t *lm,
 	arc_t		arc;
 	lm_key		lmkey;
 	line_map_t	lm_copy, lm_copy2;
+	mm_entry_t	*my_cmm, *old_cmm;
 	lm_entry_t	*lm_entry1, *lm_entry2;
+	move_map_t	cmm2;
 
 	if(depth > 0) {
 		lm_init(&lm_copy);
@@ -718,18 +597,18 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, line_map_t *lm,
 	was_p1 = is_p1_for_turn(mm->mm_stack_size - 1);
 	is_p1 = is_p1_for_turn(mm->mm_stack_size);
 	if(depth == 0) {
-		current_eval = evaluate_board(mm, candidate_moves, lm);
+		current_eval = evaluate_board(mm, lm);
 		m_c = 0;
 	} else {
 		current_eval = evaluate_board_cached(mm, lm, prev_move, was_p1,
 						     line_mods, &m_c);
 		DEBUG_ASSERT(m_c <= 12);
 #ifdef DEBUG
-		eval2 = evaluate_board(mm, candidate_moves, &lm_copy2);
-		if(current_eval == P1_WON || current_eval == P2_WON) {
-			goto skip_compare;
-		}
+		eval2 = evaluate_board(mm, &lm_copy2);
 		for(i = 0; i < mm->mm_stack_size; i++) {
+			if(current_eval == P1_WON || current_eval == P2_WON) {
+				break;
+			}
 			entry = &mm->mm_stack[i];
 			for(j = 0; j < 3; j++) {
 				lmkey = lm_mmkey2lmkey(entry->mme_key, j);
@@ -738,15 +617,10 @@ do_evaluate_ahead(move_map_t *mm, move_map_t *candidate_moves, line_map_t *lm,
 				assert((lm_entry1 == NULL) == (lm_entry2 == NULL));
 				if(lm_entry1 == NULL) continue;
 				assert(lm_entry1->lme_key == lm_entry2->lme_key);
-				assert(lm_entry1->lme_dl_r == lm_entry2->lme_dl_r);
-				assert(lm_entry1->lme_dl_c == lm_entry2->lme_dl_c);
-				assert(lm_entry1->lme_length == lm_entry2->lme_length);
+				assert(lm_entry1->lme_data == lm_entry2->lme_data);
 				assert(lm_entry1->lme_score == lm_entry2->lme_score);
-				assert(lm_entry1->lme_flags == lm_entry2->lme_flags);
 			}
 		}
-skip_compare:
-		assert(current_eval == eval2);
 #endif
 	}
 	if(current_eval == P1_WON || current_eval == P2_WON) {
@@ -770,15 +644,32 @@ skip_compare:
 			DEBUG_ASSERT(lm->lm_stack[i].lme_next == lm_copy.lm_stack[i].lme_next);
 			DEBUG_ASSERT(lm->lm_stack[i].lme_key == lm_copy.lm_stack[i].lme_key);
 			DEBUG_ASSERT(lm->lm_stack[i].lme_score == lm_copy.lm_stack[i].lme_score);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_length == lm_copy.lm_stack[i].lme_length);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_flags == lm_copy.lm_stack[i].lme_flags);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_dl_r == lm_copy.lm_stack[i].lme_dl_r);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_dl_c == lm_copy.lm_stack[i].lme_dl_c);
+			DEBUG_ASSERT(lm->lm_stack[i].lme_data == lm_copy.lm_stack[i].lme_data);
 		}
 #endif
-		return current_eval;
+		return populate_cmm(mm, candidate_moves, lm);
 	}
-	populate_cmm(mm, candidate_moves, lm);
+	current_eval = populate_cmm(mm, candidate_moves, lm);
+#ifdef DEBUG
+	eval2 = evaluate_board_o(mm, &cmm2);
+	for(i = 0; i < candidate_moves->mm_stack_size; i++) {
+		my_cmm = &candidate_moves->mm_stack[i];
+		old_cmm = mm_get(&cmm2, my_cmm->mme_key);
+		DEBUG_ASSERT(old_cmm != NULL);
+		DEBUG_ASSERT(my_cmm->mme_key == old_cmm->mme_key);
+		DEBUG_ASSERT(my_cmm->mme_value == old_cmm->mme_value);
+	}
+	for(i = 0; i < cmm2.mm_stack_size; i++) {
+		old_cmm = &cmm2.mm_stack[i];
+		my_cmm = mm_get(candidate_moves, old_cmm->mme_key);
+		DEBUG_ASSERT(my_cmm != NULL);
+		DEBUG_ASSERT(my_cmm->mme_key == old_cmm->mme_key);
+		DEBUG_ASSERT(my_cmm->mme_value == old_cmm->mme_value);
+	}
+	if(depth > 0) {
+		assert(current_eval == eval2);
+	}
+#endif
 	// Now we need to go through the moves and evaluate them in order. The moves
 	// are labeled with a score of how impactful they are. We simply go through them
 	// in order of impact, and see which gives us the best evaluation.
@@ -866,10 +757,7 @@ eval_impact_moves:
 			DEBUG_ASSERT(lm->lm_stack[i].lme_next == lm_copy.lm_stack[i].lme_next);
 			DEBUG_ASSERT(lm->lm_stack[i].lme_key == lm_copy.lm_stack[i].lme_key);
 			DEBUG_ASSERT(lm->lm_stack[i].lme_score == lm_copy.lm_stack[i].lme_score);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_length == lm_copy.lm_stack[i].lme_length);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_flags == lm_copy.lm_stack[i].lme_flags);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_dl_r == lm_copy.lm_stack[i].lme_dl_r);
-			DEBUG_ASSERT(lm->lm_stack[i].lme_dl_c == lm_copy.lm_stack[i].lme_dl_c);
+			DEBUG_ASSERT(lm->lm_stack[i].lme_data == lm_copy.lm_stack[i].lme_data);
 		}
 #endif
 		return best_score;

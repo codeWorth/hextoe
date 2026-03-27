@@ -52,13 +52,10 @@ lm_init(line_map_t *lm)
 }
 
 lm_entry_t *
-lm_insert(line_map_t *lme, lm_key key, int16_t score, uint8_t length,
-	  int8_t delta_r, int8_t delta_c, uint8_t flags)
+lm_insert(line_map_t *lme, lm_key key, int16_t score, uint8_t length)
 {
 	lm_entry_t	*new_entry;
 
-	DEBUG_ASSERT(!(delta_r == 0 && delta_c == 0 &&
-		     (lm_key_get_a(key) == IS_FLAG_SET(flags, LM_DEST_A))));
 	// MAP_NEW_ENTRY inserts at the head, and MAP_GET searches starting from
 	// the head. For this reason, we can insert duplicate entries, and the
 	// most recently inserted will always be returned.
@@ -66,11 +63,7 @@ lm_insert(line_map_t *lme, lm_key key, int16_t score, uint8_t length,
 				  LME_INDEX, lm_entry_t, lme_next, lme_prev);
 	new_entry->lme_key = key;
 	new_entry->lme_score = score;
-	new_entry->lme_length = length;
-	new_entry->lme_dl_r = delta_r;
-	new_entry->lme_dl_c = delta_c;
-	new_entry->lme_flags = flags;
-	DEBUG_ASSERT(!LME_IS_SKIPPED(new_entry));
+	new_entry->lme_data = length & 0xF;
 	return new_entry;
 }
 
@@ -97,14 +90,14 @@ lm_remove(line_map_t *lm, mod_entry_t *mod)
 	if(LME_IS_SKIPPED(node)) {
 		// If this element was skipped, and we were asked to remove it,
 		// it really means we were asking to remove the "mask" on it.
-		node->lme_skipped_count--;
+		RESET_FLAG(node->lme_data, LM_SKIPPED);
 	} else {
 		// We may need to look for an element under this one to unskip.
 		if(mod->me_skipped_below) {
 			next = node->lme_next;
 			while(next != node) {
 				if(next->lme_key == node->lme_key) {
-					next->lme_skipped_count--;
+					RESET_FLAG(next->lme_data, LM_SKIPPED);
 					break;
 				}
 				next = next->lme_next;
@@ -123,7 +116,5 @@ void
 lm_mark_skipped(lm_entry_t *entry)
 {
 
-	// Temporary assert, I'm just curious
-	DEBUG_ASSERT(entry->lme_skipped_count == 0);
-	entry->lme_skipped_count++;
+	SET_FLAG(entry->lme_data, LM_SKIPPED);
 }
