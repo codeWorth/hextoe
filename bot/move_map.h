@@ -36,6 +36,13 @@
 	impact;						\
 })
 
+#define MME_POPULATE_ARC(arc, mme) ({	\
+					\
+	(arc).a = MME_GET_A((mme));	\
+	(arc).r = (mme)->mme_r;		\
+	(arc).c = (mme)->mme_c;		\
+})
+
 typedef uint32_t	mm_hash;
 
 typedef struct mm_score {

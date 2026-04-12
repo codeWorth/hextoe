@@ -439,10 +439,7 @@ update_cmm(tile_map_t *tm, move_map_t *cmm, mm_entry_t *move, int prev_total)
 		 move->mme_score.s120_p1;
 	total += move->mme_score.s0_p2 + move->mme_score.s60_p2 +
 		 move->mme_score.s120_p2;
-
-	pos.a = MME_GET_A(move);
-	pos.r = move->mme_r;
-	pos.c = move->mme_c;
+	MME_POPULATE_ARC(pos, move);
 
 	/*
 	 * For each of the 3 axes, walk up to WIN_LENGTH in both directions
@@ -596,6 +593,7 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 		entry = sorted_moves[i];
 		DEBUG_ASSERT(!MME_IS_SKIPPED(entry));
 		SET_FLAG(entry->mme_flags, MME_SKIPPED);
+		MME_POPULATE_ARC(move, entry);
 		tile = tm_insert(tm, &move, is_p1);
 		sub_eval = do_evaluate_ahead(tm, cmm, ml, depth+1, alpha, beta,
 					     NULL, entry, current_eval);
@@ -655,6 +653,7 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 
 	tm_init(&tm);
 	mm_init(&cmm);
+	populate_tile_map(&tm, as, rs, cs, is_p1s, num_moves);
 	err = do_evaluate_ahead(&tm, &cmm, &moves_list, 0, P2_WON, P1_WON,
 				&best_move, NULL, 0);
 	if(err == 0) {
