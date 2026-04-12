@@ -36,3 +36,13 @@ encode_arc(arc_t *arc)
 	move |= arc->c & MASK_30;
 	return move;
 }
+
+void
+decode_arc(uint64_t key, arc_t *arc)
+{
+	arc->c = (int32_t)((key & MASK_30) << 2) >> 2;
+	key >>= 30;
+	arc->r = (int32_t)((key & MASK_30) << 2) >> 2;
+	key >>= 30;
+	arc->a = key & 1;
+}

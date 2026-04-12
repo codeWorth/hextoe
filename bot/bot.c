@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "move_map.h"
-#include "tile_map.h"
+#include "khash.h"
 #include "move_heap.h"
 #include "bot_util.h"
 #include "bot.h"
@@ -70,6 +70,8 @@ arc_t	arc_sur = {-1, 0, 1};
 	(total) += (s_p1);						\
 	(total) -= (s_p2);						\
 })
+
+KHASH_MAP_INIT_INT64(tm_t, bool)
 
 int
 look_moves_at_depth(int depth)
@@ -153,17 +155,19 @@ step_ur(arc_t *arc, arc_t *darc)
 // Populate the move map with the given list of moves.
 // The value of each entry is just 1 for p1 and -1 for p2.
 void
-populate_tile_map(tile_map_t *tm, int* as, int* rs, int* cs, int* is_p1s,
+populate_tile_map(khash_t(tm_t) *tm, int* as, int* rs, int* cs, int* is_p1s,
 		  int num_moves)
 {
-	int		i;
+	int		i, ret;
 	arc_t		arc;
+	khint_t		k;
 
 	for(i = 0; i < num_moves; i++) {
 		arc.a = as[i];
 		arc.r = rs[i];
 		arc.c = cs[i];
-		tm_insert(tm, &arc, is_p1s[i]);
+		k = kh_put(tm_t, tm, encode_arc(&arc), &ret);
+		kh_value(tm, k) = is_p1s[i];
 	}
 }
 
@@ -174,23 +178,23 @@ populate_tile_map(tile_map_t *tm, int* as, int* rs, int* cs, int* is_p1s,
  */
 
 int
-walk_dir(tile_map_t *tm, arc_t *start, bool is_p1,
+walk_dir(khash_t(tm_t) *tm, arc_t *start, bool is_p1,
 	 void (*step)(arc_t *, arc_t *), bool *enemy_end)
 {
 	int		length = 0;
 	arc_t		cur_pos, next_pos;
-	tm_entry_t	*entry;
+	khint_t		entry;
 
 	cur_pos = *start;
-	while((entry = tm_get(tm, &cur_pos)) != NULL) {
-		if(TME_IS_P1(entry) != is_p1) {
+	while((entry = kh_get(tm_t, tm, encode_arc(&cur_pos))) != kh_end(tm)) {
+		if(kh_value(tm, entry) != is_p1) {
 			break;
 		}
 		length++;
 		step(&cur_pos, &next_pos);
 		cur_pos = next_pos;
 	}
-	*enemy_end = entry != NULL;
+	*enemy_end = entry != kh_end(tm);
 	return length;
 }
 
@@ -202,18 +206,18 @@ walk_dir(tile_map_t *tm, arc_t *start, bool is_p1,
  */
 
 int
-count_dir(tile_map_t *tm, arc_t *start, bool is_p1, int max,
+count_dir(khash_t(tm_t) *tm, arc_t *start, bool is_p1, int max,
 	  void (*step)(arc_t *, arc_t *), int* length)
 {
 	int		count = 0;
 	arc_t		cur_pos, next_pos;
-	tm_entry_t	*entry;
+	khint_t		entry;
 
 	cur_pos = *start;
 	*length = 0;
 	while(*length < max) {
-		entry = tm_get(tm, &cur_pos);
-		if(entry != NULL && TME_IS_P1(entry) != is_p1) {
+		entry = kh_get(tm_t, tm, encode_arc(&cur_pos));
+		if(entry != kh_end(tm) && kh_value(tm, entry) != is_p1) {
 			break;
 		}
 		count++;
@@ -232,26 +236,26 @@ count_dir(tile_map_t *tm, arc_t *start, bool is_p1, int max,
  */
 
 void
-count_and_walk_dir(tile_map_t *tm, arc_t *start, bool is_p1, int max,
+count_and_walk_dir(khash_t(tm_t) *tm, arc_t *start, bool is_p1, int max,
 		   void (*step)(arc_t *, arc_t *), int *friend_count,
 		   int *line_len, int *walked_len, bool *enemy_end)
 {
 	bool		ended_line = false;
 	arc_t		cur_pos, next_pos;
-	tm_entry_t	*entry;
+	khint_t		entry;
 
 	cur_pos = *start;
 	*friend_count = 0;
 	*line_len = 0;
 	*walked_len = 0;
 	while(*walked_len < max) {
-		entry = tm_get(tm, &cur_pos);
-		if((entry == NULL || TME_IS_P1(entry) != is_p1) &&
+		entry = kh_get(tm_t, tm, encode_arc(&cur_pos));
+		if((entry == kh_end(tm) || kh_value(tm, entry) != is_p1) &&
 		   !ended_line && *walked_len > 0) {
-			*enemy_end = entry != NULL;
+			*enemy_end = entry != kh_end(tm);
 			ended_line = true;
 		}
-		if(entry != NULL && TME_IS_P1(entry) != is_p1) {
+		if(entry != kh_end(tm) && kh_value(tm, entry) != is_p1) {
 			return;
 		}
 		(*friend_count)++;
@@ -280,13 +284,13 @@ count_and_walk_dir(tile_map_t *tm, arc_t *start, bool is_p1, int max,
  */
 
 int
-score_move(tile_map_t *tm, arc_t *move, bool is_p1,
+score_move(khash_t(tm_t) *tm, arc_t *move, bool is_p1,
 	   void (*step)(arc_t *, arc_t *), void (*step_rev)(arc_t *, arc_t *))
 {
 	int	score_a, score_b, len_r, len_l, len, c_r, c_l, wlen_r, wlen_l;
 	bool	en_end_r, en_end_l;
 
-	DEBUG_ASSERT(tm_get(tm, move) == NULL);
+	DEBUG_ASSERT(kh_get(tm_t, tm, encode_arc(move)) == kh_end(tm));
 	count_and_walk_dir(tm, move, is_p1, WIN_LENGTH, step, &c_r, &len_r,
 			   &wlen_r, &en_end_r);
 	count_and_walk_dir(tm, move, is_p1, WIN_LENGTH, step_rev, &c_l, &len_l,
@@ -321,11 +325,11 @@ score_move(tile_map_t *tm, arc_t *move, bool is_p1,
  */
 
 int
-score_and_insert(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total)
+score_and_insert(khash_t(tm_t) *tm, move_map_t *cmm, arc_t *pos, int total)
 {
 	mm_score_t	score;
 
-	DEBUG_ASSERT(tm_get(tm, pos) == NULL);
+	DEBUG_ASSERT(kh_get(tm_t, tm, encode_arc(pos)) == kh_end(tm));
 	DEBUG_ASSERT(mm_get(cmm, pos) == NULL);
 
 	score.s0_p1 = score_move(tm, pos, true, step_r, step_l);
@@ -357,26 +361,26 @@ score_and_insert(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total)
  */
 
 int
-populate_cmm(tile_map_t *tm, move_map_t *cmm)
+populate_cmm(khash_t(tm_t) *tm, move_map_t *cmm)
 {
-	int 		i, dir, total = 0;
+	int 		dir, total = 0;
+	khint_t		ki;
 	arc_t		pos, cur;
-	tm_entry_t	*entry;
 	void		(*steps[6])(arc_t *, arc_t *) = {step_r, step_dr,
 							 step_dl, step_l,
 							 step_ul, step_ur};
 
 	DEBUG_ASSERT(cmm->mm_stack_size == 0);
-	for(i = 0; i < tm->tm_stack_size; i++) {
-		entry = &tm->tm_stack[i];
-		pos.a = TME_GET_A(entry);
-		pos.r = entry->tme_r;
-		pos.c = entry->tme_c;
+	for(ki = kh_begin(tm); ki != kh_end(tm); ++ki) {
+		if(!kh_exist(tm, ki)) {
+			continue;
+		}
+		decode_arc(kh_key(tm, ki), &pos);
 		for(dir = 0; dir < 6; dir++) {
 			steps[dir](&pos, &cur);
 
 			// Do not try to make a move on an occupied tile
-			if(tm_get(tm, &cur) != NULL) {
+			if(kh_get(tm_t, tm, encode_arc(&cur)) != kh_end(tm)) {
 				continue;
 			}
 			// Do not re-score a move we already scored
@@ -399,7 +403,7 @@ populate_cmm(tile_map_t *tm, move_map_t *cmm)
  */
 
 int
-rescore_axis(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total, int dir,
+rescore_axis(khash_t(tm_t) *tm, move_map_t *cmm, arc_t *pos, int total, int dir,
 	     void (*walk)(arc_t *, arc_t *),
 	     void (*step)(arc_t *, arc_t *),
 	     void (*step_rev)(arc_t *, arc_t *))
@@ -417,7 +421,7 @@ rescore_axis(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total, int dir,
 		if(entry == NULL) {
 			continue;
 		}
-		DEBUG_ASSERT(tm_get(tm, &cur) == NULL);
+		DEBUG_ASSERT(kh_get(tm_t, tm, encode_arc(&cur)) == kh_end(tm));
 		s_p1 = score_move(tm, &cur, true, step, step_rev);
 		s_p2 = score_move(tm, &cur, false, step, step_rev);
 		if(s_p1 == P_WON) {
@@ -460,7 +464,7 @@ rescore_axis(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total, int dir,
  */
 
 int
-update_cmm(tile_map_t *tm, move_map_t *cmm, mm_entry_t *move, int prev_total)
+update_cmm(khash_t(tm_t) *tm, move_map_t *cmm, mm_entry_t *move, int prev_total)
 {
 	int		total = prev_total;
 	int		dir;
@@ -507,7 +511,7 @@ update_cmm(tile_map_t *tm, move_map_t *cmm, mm_entry_t *move, int prev_total)
 		step = dir < 3 ? steps[dir] : steps_rev[dir - 3];
 
 		step(&pos, &cur);
-		if(tm_get(tm, &cur) != NULL) {
+		if(kh_get(tm_t, tm, encode_arc(&cur)) != kh_end(tm)) {
 			continue;
 		}
 		if(mm_get(cmm, &cur) != NULL) {
@@ -582,19 +586,19 @@ populate_sorted_moves(move_map_t *cmm, move_list_t *ml,
  */
 
 int
-do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
-		  int alpha, int beta, arc_t *best_move_out,
+do_evaluate_ahead(khash_t(tm_t) *tm, move_map_t *cmm, move_list_t *ml,
+		  int depth, int alpha, int beta, arc_t *best_move_out,
 		  mm_entry_t *prev_move, int prev_eval)
 {
 	bool		is_p1;
-	int		i, best_score, current_eval, sub_eval, look_moves;
+	int		i, ret, best_score, current_eval, sub_eval, look_moves;
 	arc_t		move, best_move;
 	mm_entry_t	*sorted_moves[MAX_EVAL_WIDTH];
 	uint32_t	cmm_stack_size;
 	mm_entry_t	*entry;
-	tm_entry_t	*tile;
+	khint_t		tile;
 
-	is_p1 = is_p1_for_turn(tm->tm_stack_size);
+	is_p1 = is_p1_for_turn(kh_size(tm));
 	cmm_stack_size = cmm->mm_stack_size;
 	if(depth == 0) {
 		current_eval = populate_cmm(tm, cmm);
@@ -632,10 +636,11 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 		DEBUG_ASSERT(!MME_IS_SKIPPED(entry));
 		SET_FLAG(entry->mme_flags, MME_SKIPPED);
 		MME_POPULATE_ARC(move, entry);
-		tile = tm_insert(tm, &move, is_p1);
+		tile = kh_put(tm_t, tm, encode_arc(&move), &ret);
+		kh_value(tm, tile) = is_p1;
 		sub_eval = do_evaluate_ahead(tm, cmm, ml, depth+1, alpha, beta,
 					     NULL, entry, current_eval);
-		tm_remove_entry(tm, tile);
+		kh_del(tm_t, tm, tile);
 		DEBUG_ASSERT(MME_IS_SKIPPED(entry));
 		RESET_FLAG(entry->mme_flags, MME_SKIPPED);
 		// If this is the first try, or this move is better for us than
@@ -679,7 +684,7 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 {
 	int		err;
 	arc_t		best_move;
-	tile_map_t	tm;
+	khash_t(tm_t)	*tm;
 	move_map_t	cmm;
 	move_list_t	moves_list;
 	move_entry_t	moves_heap[MAX_EVAL_WIDTH + 1];
@@ -689,11 +694,12 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 	// Index 0 is left empty, which simplifies the indexing math.
 	INIT_STACK(&moves_list, moves_heap, MAX_EVAL_WIDTH);
 
-	tm_init(&tm);
+	tm = kh_init(tm_t);
 	mm_init(&cmm);
-	populate_tile_map(&tm, as, rs, cs, is_p1s, num_moves);
-	err = do_evaluate_ahead(&tm, &cmm, &moves_list, 0, P2_WON, P1_WON,
+	populate_tile_map(tm, as, rs, cs, is_p1s, num_moves);
+	err = do_evaluate_ahead(tm, &cmm, &moves_list, 0, P2_WON, P1_WON,
 				&best_move, NULL, 0);
+	kh_destroy(tm_t, tm);
 	if(err == 0) {
 		*best_a = best_move.a;
 		*best_r = best_move.r;
