@@ -1445,41 +1445,49 @@ test_decode_arc_negative_one(void)
 }
 
 /* ================================================================== */
-/* populate_tile_map through update_cmm -- commented out during       */
-/* khash migration                                                    */
+/* populate_tile_map through update_cmm                               */
 /* ================================================================== */
 
-#if 0
+static void
+tm_kh_insert(khash_t(tm_t) *tm, arc_t *arc, bool is_p1)
+{
+	int	ret;
+	khint_t	k;
+
+	k = kh_put(tm_t, tm, encode_arc(arc), &ret);
+	kh_value(tm, k) = is_p1;
+}
+
 static void
 test_populate_tile_map(void)
 {
-	tile_map_t	ltm;
-	tm_entry_t	*e;
+	khash_t(tm_t)	*ltm;
+	khint_t		k;
 	int		as[]     = {0, 1, 0};
 	int		rs[]     = {0, 1, 2};
 	int		cs[]     = {0, 1, 2};
 	int		is_p1s[] = {1, 0, 1};
 	arc_t		a;
 
-	tm_init(&ltm);
-	populate_tile_map(&ltm, as, rs, cs, is_p1s, 3);
+	ltm = kh_init(tm_t);
+	populate_tile_map(ltm, as, rs, cs, is_p1s, 3);
 
-	assert(ltm.tm_stack_size == 3);
+	assert(kh_size(ltm) == 3);
 
 	a = ARC(false, 0, 0);
-	e = tm_get(&ltm, &a);
-	assert(e != NULL);
-	assert(TME_IS_P1(e));
+	k = kh_get(tm_t, ltm, encode_arc(&a));
+	assert(k != kh_end(ltm));
+	assert(kh_value(ltm, k));
 
 	a = ARC(true, 1, 1);
-	e = tm_get(&ltm, &a);
-	assert(e != NULL);
-	assert(!TME_IS_P1(e));
+	k = kh_get(tm_t, ltm, encode_arc(&a));
+	assert(k != kh_end(ltm));
+	assert(!kh_value(ltm, k));
 
 	a = ARC(false, 2, 2);
-	e = tm_get(&ltm, &a);
-	assert(e != NULL);
-	assert(TME_IS_P1(e));
+	k = kh_get(tm_t, ltm, encode_arc(&a));
+	assert(k != kh_end(ltm));
+	assert(kh_value(ltm, k));
 
 	PASS("populate_tile_map");
 }
@@ -1496,13 +1504,13 @@ test_populate_tile_map(void)
 static void
 test_walk_dir_empty_start(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		start = ARC(false, 0, 0);
 	bool		enemy_end;
 	int		len;
 
-	tm_init(&ltm);
-	len = walk_dir(&ltm, &start, true, step_r, &enemy_end);
+	ltm = kh_init(tm_t);
+	len = walk_dir(ltm,&start, true, step_r, &enemy_end);
 	assert(len == 0);
 	assert(!enemy_end);
 	PASS("walk_dir_empty_start");
@@ -1511,14 +1519,14 @@ test_walk_dir_empty_start(void)
 static void
 test_walk_dir_enemy_start(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		start = ARC(false, 0, 0);
 	bool		enemy_end;
 	int		len;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &start, false); /* p2 tile */
-	len = walk_dir(&ltm, &start, true, step_r, &enemy_end);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&start, false); /* p2 tile */
+	len = walk_dir(ltm,&start, true, step_r, &enemy_end);
 	assert(len == 0);
 	assert(enemy_end);
 	PASS("walk_dir_enemy_start");
@@ -1527,14 +1535,14 @@ test_walk_dir_enemy_start(void)
 static void
 test_walk_dir_single_friendly_then_empty(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		start = ARC(false, 0, 0);
 	bool		enemy_end;
 	int		len;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &start, true);
-	len = walk_dir(&ltm, &start, true, step_r, &enemy_end);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&start, true);
+	len = walk_dir(ltm,&start, true, step_r, &enemy_end);
 	assert(len == 1);
 	assert(!enemy_end);
 	PASS("walk_dir_single_friendly_then_empty");
@@ -1543,16 +1551,16 @@ test_walk_dir_single_friendly_then_empty(void)
 static void
 test_walk_dir_single_friendly_then_enemy(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		a0 = ARC(false, 0, 0);
 	arc_t		a1 = ARC(false, 0, 1);
 	bool		enemy_end;
 	int		len;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &a0, true);
-	tm_insert(&ltm, &a1, false); /* enemy */
-	len = walk_dir(&ltm, &a0, true, step_r, &enemy_end);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&a0, true);
+	tm_kh_insert(ltm,&a1, false); /* enemy */
+	len = walk_dir(ltm,&a0, true, step_r, &enemy_end);
 	assert(len == 1);
 	assert(enemy_end);
 	PASS("walk_dir_single_friendly_then_enemy");
@@ -1561,18 +1569,18 @@ test_walk_dir_single_friendly_then_enemy(void)
 static void
 test_walk_dir_multi_friendly_then_empty(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		a0 = ARC(false, 0, 0);
 	arc_t		a1 = ARC(false, 0, 1);
 	arc_t		a2 = ARC(false, 0, 2);
 	bool		enemy_end;
 	int		len;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &a0, true);
-	tm_insert(&ltm, &a1, true);
-	tm_insert(&ltm, &a2, true);
-	len = walk_dir(&ltm, &a0, true, step_r, &enemy_end);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&a0, true);
+	tm_kh_insert(ltm,&a1, true);
+	tm_kh_insert(ltm,&a2, true);
+	len = walk_dir(ltm,&a0, true, step_r, &enemy_end);
 	assert(len == 3);
 	assert(!enemy_end);
 	PASS("walk_dir_multi_friendly_then_empty");
@@ -1581,7 +1589,7 @@ test_walk_dir_multi_friendly_then_empty(void)
 static void
 test_walk_dir_multi_friendly_then_enemy(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		a0 = ARC(false, 0, 0);
 	arc_t		a1 = ARC(false, 0, 1);
 	arc_t		a2 = ARC(false, 0, 2);
@@ -1589,12 +1597,12 @@ test_walk_dir_multi_friendly_then_enemy(void)
 	bool		enemy_end;
 	int		len;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &a0, true);
-	tm_insert(&ltm, &a1, true);
-	tm_insert(&ltm, &a2, true);
-	tm_insert(&ltm, &a3, false); /* enemy */
-	len = walk_dir(&ltm, &a0, true, step_r, &enemy_end);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&a0, true);
+	tm_kh_insert(ltm,&a1, true);
+	tm_kh_insert(ltm,&a2, true);
+	tm_kh_insert(ltm,&a3, false); /* enemy */
+	len = walk_dir(ltm,&a0, true, step_r, &enemy_end);
 	assert(len == 3);
 	assert(enemy_end);
 	PASS("walk_dir_multi_friendly_then_enemy");
@@ -1612,12 +1620,12 @@ test_walk_dir_multi_friendly_then_enemy(void)
 static void
 test_count_dir_all_empty(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		start = ARC(false, 0, 0);
 	int		length, count;
 
-	tm_init(&ltm);
-	count = count_dir(&ltm, &start, true, 6, step_r, &length);
+	ltm = kh_init(tm_t);
+	count = count_dir(ltm,&start, true, 6, step_r, &length);
 	assert(count == 6);
 	assert(length == 6);
 	PASS("count_dir_all_empty");
@@ -1626,13 +1634,13 @@ test_count_dir_all_empty(void)
 static void
 test_count_dir_enemy_at_start(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		start = ARC(false, 0, 0);
 	int		length, count;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &start, false); /* enemy */
-	count = count_dir(&ltm, &start, true, 6, step_r, &length);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&start, false); /* enemy */
+	count = count_dir(ltm,&start, true, 6, step_r, &length);
 	assert(count == 0);
 	assert(length == 0);
 	PASS("count_dir_enemy_at_start");
@@ -1641,16 +1649,16 @@ test_count_dir_enemy_at_start(void)
 static void
 test_count_dir_friendly_with_gaps(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		a0 = ARC(false, 0, 0);
 	arc_t		a2 = ARC(false, 0, 2);
 	int		length, count;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &a0, true);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&a0, true);
 	/* c=1 is empty */
-	tm_insert(&ltm, &a2, true);
-	count = count_dir(&ltm, &a0, true, 3, step_r, &length);
+	tm_kh_insert(ltm,&a2, true);
+	count = count_dir(ltm,&a0, true, 3, step_r, &length);
 	assert(count == 3); /* friendly, empty, friendly all counted */
 	assert(length == 3);
 	PASS("count_dir_friendly_with_gaps");
@@ -1659,17 +1667,17 @@ test_count_dir_friendly_with_gaps(void)
 static void
 test_count_dir_friendly_then_enemy(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		a0 = ARC(false, 0, 0);
 	arc_t		a1 = ARC(false, 0, 1);
 	arc_t		a2 = ARC(false, 0, 2);
 	int		length, count;
 
-	tm_init(&ltm);
-	tm_insert(&ltm, &a0, true);
-	tm_insert(&ltm, &a1, true);
-	tm_insert(&ltm, &a2, false); /* enemy */
-	count = count_dir(&ltm, &a0, true, 6, step_r, &length);
+	ltm = kh_init(tm_t);
+	tm_kh_insert(ltm,&a0, true);
+	tm_kh_insert(ltm,&a1, true);
+	tm_kh_insert(ltm,&a2, false); /* enemy */
+	count = count_dir(ltm,&a0, true, 6, step_r, &length);
 	assert(count == 2);
 	assert(length == 2);
 	PASS("count_dir_friendly_then_enemy");
@@ -1678,17 +1686,17 @@ test_count_dir_friendly_then_enemy(void)
 static void
 test_count_dir_max_reached(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		a;
 	int		i, length, count;
 	arc_t		start = ARC(false, 0, 0);
 
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	for(i = 0; i < 5; i++) {
 		a = ARC(false, 0, i);
-		tm_insert(&ltm, &a, true);
+		tm_kh_insert(ltm,&a, true);
 	}
-	count = count_dir(&ltm, &start, true, 3, step_r, &length);
+	count = count_dir(ltm,&start, true, 3, step_r, &length);
 	assert(count == 3);
 	assert(length == 3);
 	PASS("count_dir_max_reached");
@@ -1697,15 +1705,15 @@ test_count_dir_max_reached(void)
 static void
 test_count_dir_empty_then_enemy(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		start = ARC(false, 0, 0);
 	arc_t		a1 = ARC(false, 0, 1);
 	int		length, count;
 
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	/* c=0 is empty */
-	tm_insert(&ltm, &a1, false); /* enemy at c=1 */
-	count = count_dir(&ltm, &start, true, 6, step_r, &length);
+	tm_kh_insert(ltm,&a1, false); /* enemy at c=1 */
+	count = count_dir(ltm,&start, true, 6, step_r, &length);
 	assert(count == 1);
 	assert(length == 1);
 	PASS("count_dir_empty_then_enemy");
@@ -1730,7 +1738,7 @@ test_count_dir_empty_then_enemy(void)
 static void
 test_score_move_not_enough_space(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		move, a;
 	int		score;
 
@@ -1740,14 +1748,14 @@ test_score_move_not_enough_space(void)
 	 * count_dir left from c=0: c=0,c=-1 then enemy at c=-2 -> len_l=2
 	 * len_l + len_r - 1 = 2 + 3 - 1 = 4 < 6 -> returns 0
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	a = ARC(false, 0, -2);
-	tm_insert(&ltm, &a, false);
+	tm_kh_insert(ltm,&a, false);
 	a = ARC(false, 0, 3);
-	tm_insert(&ltm, &a, false);
+	tm_kh_insert(ltm,&a, false);
 
 	move = ARC(false, 0, 0);
-	score = score_move(&ltm, &move, true, step_r, step_l);
+	score = score_move(ltm,&move, true, step_r, step_l);
 	assert(score == 0);
 	PASS("score_move_not_enough_space");
 }
@@ -1755,7 +1763,7 @@ test_score_move_not_enough_space(void)
 static void
 test_score_move_isolated_open(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		move = ARC(false, 0, 0);
 	int		score, expected;
 
@@ -1774,8 +1782,8 @@ test_score_move_isolated_open(void)
 	 *
 	 * Total = 48 + 2 = 50
 	 */
-	tm_init(&ltm);
-	score = score_move(&ltm, &move, true, step_r, step_l);
+	ltm = kh_init(tm_t);
+	score = score_move(ltm,&move, true, step_r, step_l);
 	expected = 12 * NEARBY_SCORE + L1_SCORE * 2;
 	assert(score == expected);
 	PASS("score_move_isolated_open");
@@ -1784,7 +1792,7 @@ test_score_move_isolated_open(void)
 static void
 test_score_move_extends_line_of_2(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		move = ARC(false, 0, 0);
 	arc_t		a;
 	int		score, expected;
@@ -1807,13 +1815,13 @@ test_score_move_extends_line_of_2(void)
 	 *
 	 * Total = 48 + 60 = 108
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	a = ARC(false, 0, 1);
-	tm_insert(&ltm, &a, true);
+	tm_kh_insert(ltm,&a, true);
 	a = ARC(false, 0, 2);
-	tm_insert(&ltm, &a, true);
+	tm_kh_insert(ltm,&a, true);
 
-	score = score_move(&ltm, &move, true, step_r, step_l);
+	score = score_move(ltm,&move, true, step_r, step_l);
 	expected = 12 * NEARBY_SCORE + L3_SCORE * 2;
 	assert(score == expected);
 	PASS("score_move_extends_line_of_2");
@@ -1822,7 +1830,7 @@ test_score_move_extends_line_of_2(void)
 static void
 test_score_move_bridges_two_segments(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		move = ARC(false, 0, 0);
 	arc_t		a;
 	int		score, expected;
@@ -1841,13 +1849,13 @@ test_score_move_bridges_two_segments(void)
 	 *
 	 * Total = 48 + 60 = 108
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	a = ARC(false, 0, -1);
-	tm_insert(&ltm, &a, true);
+	tm_kh_insert(ltm,&a, true);
 	a = ARC(false, 0, 1);
-	tm_insert(&ltm, &a, true);
+	tm_kh_insert(ltm,&a, true);
 
-	score = score_move(&ltm, &move, true, step_r, step_l);
+	score = score_move(ltm,&move, true, step_r, step_l);
 	expected = 12 * NEARBY_SCORE + L3_SCORE * 2;
 	assert(score == expected);
 	PASS("score_move_bridges_two_segments");
@@ -1856,7 +1864,7 @@ test_score_move_bridges_two_segments(void)
 static void
 test_score_move_one_end_enemy(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		move = ARC(false, 0, 0);
 	arc_t		a;
 	int		score, score_a, score_b;
@@ -1877,13 +1885,13 @@ test_score_move_one_end_enemy(void)
 	 *
 	 * Total = 32 + 8 = 40
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	a = ARC(false, 0, 1);
-	tm_insert(&ltm, &a, true);
+	tm_kh_insert(ltm,&a, true);
 	a = ARC(false, 0, 2);
-	tm_insert(&ltm, &a, false);
+	tm_kh_insert(ltm,&a, false);
 
-	score = score_move(&ltm, &move, true, step_r, step_l);
+	score = score_move(ltm,&move, true, step_r, step_l);
 	count_r = 2;
 	count_l = 6;
 	score_a = (count_r + count_l) * NEARBY_SCORE;
@@ -1895,7 +1903,7 @@ test_score_move_one_end_enemy(void)
 static void
 test_score_move_winning(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	arc_t		move = ARC(false, 0, 0);
 	arc_t		a;
 	int		i, score;
@@ -1906,13 +1914,13 @@ test_score_move_winning(void)
 	 * walk_dir left from c=-1: empty -> len_l=0
 	 * line = 5 + 0 + 1 = 6 >= WIN_LENGTH -> returns P_WON
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	for(i = 1; i <= 5; i++) {
 		a = ARC(false, 0, i);
-		tm_insert(&ltm, &a, true);
+		tm_kh_insert(ltm,&a, true);
 	}
 
-	score = score_move(&ltm, &move, true, step_r, step_l);
+	score = score_move(ltm,&move, true, step_r, step_l);
 	assert(score == P_WON);
 	PASS("score_move_winning");
 }
@@ -1924,7 +1932,7 @@ test_score_move_winning(void)
 static void
 test_populate_cmm_single_tile(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	lcmm;
 	arc_t		tile = ARC(false, 0, 0);
 	arc_t		nbr;
@@ -1933,10 +1941,10 @@ test_populate_cmm_single_tile(void)
 	 * One tile placed. It has 6 neighbors, all empty.
 	 * Each should become a candidate in the cmm.
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
-	tm_insert(&ltm, &tile, true);
-	(void)populate_cmm(&ltm, &lcmm);
+	tm_kh_insert(ltm,&tile, true);
+	(void)populate_cmm(ltm,&lcmm);
 
 	assert(lcmm.mm_stack_size == 6);
 
@@ -1959,7 +1967,7 @@ test_populate_cmm_single_tile(void)
 static void
 test_populate_cmm_adjacent_dedup(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	lcmm;
 	arc_t		t0 = ARC(false, 0, 0);
 	arc_t		t1 = ARC(false, 0, 1);
@@ -1969,11 +1977,11 @@ test_populate_cmm_adjacent_dedup(void)
 	 * The shared neighbors should only appear once in the cmm.
 	 * Also, t0 and t1 themselves are occupied so not candidates.
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
-	tm_insert(&ltm, &t0, true);
-	tm_insert(&ltm, &t1, true);
-	(void)populate_cmm(&ltm, &lcmm);
+	tm_kh_insert(ltm,&t0, true);
+	tm_kh_insert(ltm,&t1, true);
+	(void)populate_cmm(ltm,&lcmm);
 
 	/* t0 has 6 neighbors, t1 has 6 neighbors.
 	 * t1 is a neighbor of t0 (right) -> occupied, skipped.
@@ -1991,7 +1999,7 @@ test_populate_cmm_adjacent_dedup(void)
 static void
 test_populate_cmm_occupied_skipped(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	lcmm;
 	arc_t		t0 = ARC(false, 0, 0);
 	arc_t		t1 = ARC(false, 0, 1);
@@ -1999,11 +2007,11 @@ test_populate_cmm_occupied_skipped(void)
 	/*
 	 * Two adjacent tiles. Verify neither occupied position is in the cmm.
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
-	tm_insert(&ltm, &t0, true);
-	tm_insert(&ltm, &t1, false);
-	(void)populate_cmm(&ltm, &lcmm);
+	tm_kh_insert(ltm,&t0, true);
+	tm_kh_insert(ltm,&t1, false);
+	(void)populate_cmm(ltm,&lcmm);
 
 	assert(mm_get(&lcmm, &t0) == NULL);
 	assert(mm_get(&lcmm, &t1) == NULL);
@@ -2013,7 +2021,7 @@ test_populate_cmm_occupied_skipped(void)
 static void
 test_populate_cmm_p1_wins(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	lcmm;
 	arc_t		a;
 	int		i, total;
@@ -2023,13 +2031,13 @@ test_populate_cmm_p1_wins(void)
 	 * The neighbor at c=5 (or c=-1) completes 6 in a row for p1.
 	 * populate_cmm should detect this and return P1_WON.
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
 	for(i = 0; i < 5; i++) {
 		a = ARC(false, 0, i);
-		tm_insert(&ltm, &a, true);
+		tm_kh_insert(ltm,&a, true);
 	}
-	total = populate_cmm(&ltm, &lcmm);
+	total = populate_cmm(ltm,&lcmm);
 	assert(total == P1_WON);
 	PASS("populate_cmm_p1_wins");
 }
@@ -2037,7 +2045,7 @@ test_populate_cmm_p1_wins(void)
 static void
 test_populate_cmm_p2_wins(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	lcmm;
 	arc_t		a;
 	int		i, total;
@@ -2046,13 +2054,13 @@ test_populate_cmm_p2_wins(void)
 	 * 5 p2 tiles in a horizontal row at c=0..c=4.
 	 * populate_cmm should detect this and return P2_WON.
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
 	for(i = 0; i < 5; i++) {
 		a = ARC(false, 0, i);
-		tm_insert(&ltm, &a, false);
+		tm_kh_insert(ltm,&a, false);
 	}
-	total = populate_cmm(&ltm, &lcmm);
+	total = populate_cmm(ltm,&lcmm);
 	assert(total == P2_WON);
 	PASS("populate_cmm_p2_wins");
 }
@@ -2060,7 +2068,7 @@ test_populate_cmm_p2_wins(void)
 static void
 test_populate_cmm_total_sign(void)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	lcmm;
 	arc_t		a;
 	int		i, total;
@@ -2069,26 +2077,26 @@ test_populate_cmm_total_sign(void)
 	 * 3 p1 tiles in a row -> p1 has strong lines, p2 has nothing.
 	 * Total should be positive (p1 score minus p2 score > 0).
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
 	for(i = 0; i < 3; i++) {
 		a = ARC(false, 0, i);
-		tm_insert(&ltm, &a, true);
+		tm_kh_insert(ltm,&a, true);
 	}
-	total = populate_cmm(&ltm, &lcmm);
+	total = populate_cmm(ltm,&lcmm);
 	assert(total > 0);
 
 	/*
 	 * 3 p2 tiles in a row -> p2 has strong lines, p1 has nothing.
 	 * Total should be negative.
 	 */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&lcmm);
 	for(i = 0; i < 3; i++) {
 		a = ARC(false, 0, i);
-		tm_insert(&ltm, &a, false);
+		tm_kh_insert(ltm,&a, false);
 	}
-	total = populate_cmm(&ltm, &lcmm);
+	total = populate_cmm(ltm,&lcmm);
 	assert(total < 0);
 	PASS("populate_cmm_total_sign");
 }
@@ -2156,31 +2164,31 @@ static void
 verify_update_cmm(int *as, int *rs, int *cs, int *is_p1s, int num_moves,
 		  int move_a, int move_r, int move_c, bool move_is_p1)
 {
-	tile_map_t	ltm;
+	khash_t(tm_t)	*ltm;
 	move_map_t	cmm_test, cmm_verify;
 	int		total_test, total_updated, total_verify;
 	arc_t		move_arc;
 	mm_entry_t	*entry;
 
 	/* Build initial state */
-	tm_init(&ltm);
+	ltm = kh_init(tm_t);
 	mm_init(&cmm_test);
-	populate_tile_map(&ltm, as, rs, cs, is_p1s, num_moves);
-	total_test = populate_cmm(&ltm, &cmm_test);
+	populate_tile_map(ltm,as, rs, cs, is_p1s, num_moves);
+	total_test = populate_cmm(ltm,&cmm_test);
 
 	/* Skip the candidate entry for the move and insert tile. */
 	move_arc = ARC(move_a, move_r, move_c);
 	entry = mm_get(&cmm_test, &move_arc);
 	assert(entry != NULL);
 	SET_FLAG(entry->mme_flags, MME_SKIPPED);
-	tm_insert(&ltm, &move_arc, move_is_p1);
+	tm_kh_insert(ltm,&move_arc, move_is_p1);
 
 	/* Incremental update */
-	total_updated = update_cmm(&ltm, &cmm_test, entry, total_test);
+	total_updated = update_cmm(ltm,&cmm_test, entry, total_test);
 
 	/* Build fresh reference */
 	mm_init(&cmm_verify);
-	total_verify = populate_cmm(&ltm, &cmm_verify);
+	total_verify = populate_cmm(ltm,&cmm_verify);
 
 	/* Verify */
 	assert(total_updated == total_verify);
@@ -2412,7 +2420,6 @@ test_update_cmm_far_axis(void)
 			  1, 0, 0, true);
 	PASS("update_cmm_far_axis");
 }
-#endif /* populate_tile_map through update_cmm */
 
 /* ================================================================== */
 /* populate_sorted_moves                                              */
@@ -2775,8 +2782,6 @@ main(int argc, char const *argv[])
 	test_step_ur_from_a0();
 	test_step_ur_from_a1();
 
-	/* populate_tile_map through update_cmm tests commented out
-	   during khash migration
 	printf("== populate_tile_map ==\n");
 	test_populate_tile_map();
 
@@ -2827,7 +2832,6 @@ main(int argc, char const *argv[])
 	test_update_cmm_dense_board();
 	test_update_cmm_a_true_move();
 	test_update_cmm_far_axis();
-	*/
 
 	printf("== populate_sorted_moves ==\n");
 	test_psm_basic_ordering();
