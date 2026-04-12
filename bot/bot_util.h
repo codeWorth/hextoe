@@ -101,6 +101,5 @@ extern uint64_t splitmix64(uint64_t);
 extern uint64_t fnv_hash(uint64_t);
 
 extern uint64_t encode_arc(arc_t *);
-extern void decode_arc(uint64_t, arc_t *);
 
 #endif
