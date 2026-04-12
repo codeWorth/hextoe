@@ -188,7 +188,7 @@ mm_remove_to_length(move_map_t *mm, uint32_t length)
 	while(mm->mm_stack_size > length) {
 		entry = &mm->mm_stack[mm->mm_stack_size - 1];
 		next_entry = entry->mme_next;
-		head = &mm->mm_stack[MME_INDEX(entry->mme_hash)];
+		head = &mm->mm_buckets[MME_INDEX(entry->mme_hash)];
 		mm_remove_entry(mm, entry);
 		if(next_entry != head &&
 		   MME_LOCATION_MATCH(entry, next_entry)) {

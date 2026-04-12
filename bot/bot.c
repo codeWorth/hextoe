@@ -225,6 +225,46 @@ count_dir(tile_map_t *tm, arc_t *start, bool is_p1, int max,
 }
 
 /*
+ * This function is a combination of walk_dir and count_dir. It walks at most
+ * max tiles, and counts friendly tiles along the way. It also gets the length
+ * of N in a row, and the total length walked. Also also, it populates whether
+ * it ended on an enemy tile or an empty tile during the N in a row walk.
+ */
+
+void
+count_and_walk_dir(tile_map_t *tm, arc_t *start, bool is_p1, int max,
+		   void (*step)(arc_t *, arc_t *), int *friend_count,
+		   int *line_len, int *walked_len, bool *enemy_end)
+{
+	bool		ended_line = false;
+	arc_t		cur_pos, next_pos;
+	tm_entry_t	*entry;
+
+	cur_pos = *start;
+	*friend_count = 0;
+	*line_len = 0;
+	*walked_len = 0;
+	while(*walked_len < max) {
+		entry = tm_get(tm, &cur_pos);
+		if((entry == NULL || TME_IS_P1(entry) != is_p1) &&
+		   !ended_line && *walked_len > 0) {
+			*enemy_end = entry != NULL;
+			ended_line = true;
+		}
+		if(entry != NULL && TME_IS_P1(entry) != is_p1) {
+			return;
+		}
+		(*friend_count)++;
+		if(!ended_line && *walked_len > 0) {
+			(*line_len)++;
+		}
+		step(&cur_pos, &next_pos);
+		cur_pos = next_pos;
+		(*walked_len)++;
+	}
+}
+
+/*
  * Score a given move along the given direction. The score is essentially the
  * marginal value provided by this move along this axis.
  * First, we determine score A, which is the number of friendly tiles within
@@ -243,24 +283,21 @@ int
 score_move(tile_map_t *tm, arc_t *move, bool is_p1,
 	   void (*step)(arc_t *, arc_t *), void (*step_rev)(arc_t *, arc_t *))
 {
-	int	score_a, score_b, len_r, len_l, len, count;
+	int	score_a, score_b, len_r, len_l, len, c_r, c_l, wlen_r, wlen_l;
 	bool	en_end_r, en_end_l;
-	arc_t	start;
 
 	DEBUG_ASSERT(tm_get(tm, move) == NULL);
-	count = count_dir(tm, move, is_p1, WIN_LENGTH, step, &len_r);
-	count += count_dir(tm, move, is_p1, WIN_LENGTH, step_rev, &len_l);
+	count_and_walk_dir(tm, move, is_p1, WIN_LENGTH, step, &c_r, &len_r,
+			   &wlen_r, &en_end_r);
+	count_and_walk_dir(tm, move, is_p1, WIN_LENGTH, step_rev, &c_l, &len_l,
+			   &wlen_l, &en_end_l);
 	// Check if there isn't enough space to make a winning N-in-a-row along
 	// this axis. Return 0 if so.
-	if(len_l + len_r - 1 < WIN_LENGTH) {
+	if(wlen_l + wlen_r - 1 < WIN_LENGTH) {
 		return 0;
 	}
-	score_a = count * NEARBY_SCORE;
+	score_a = (c_r + c_l) * NEARBY_SCORE;
 
-	step(move, &start);
-	len_r = walk_dir(tm, &start, is_p1, step, &en_end_r);
-	step_rev(move, &start);
-	len_l = walk_dir(tm, &start, is_p1, step_rev, &en_end_l);
 	// We do not expect to be terminated on both sides, because that should
 	// be caught above by the not enough space check. If we are, it must be
 	// because this is a winning move.
@@ -579,11 +616,12 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 	// If this is our max depth, just return the current eval without
 	// finding anything more accurate.
 	if(depth >= MAX_EVAL_DEPTH) {
-		best_score = update_cmm(tm, cmm, prev_move, prev_eval);
+		best_score = current_eval;
 		goto undo_cmm_and_exit;
 	}
 	// Get the top N moves, in sorted order (descending).
 	look_moves = populate_sorted_moves(cmm, ml, sorted_moves, depth);
+	DEBUG_ASSERT(look_moves > 0);
 
 	// Now we need to go through the moves and evaluate them in order. The
 	// moves are labeled with a score of how impactful they are. We simply
