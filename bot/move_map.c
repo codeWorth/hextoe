@@ -122,7 +122,8 @@ mm_get_hash(move_map_t *mm, mm_hash hash, arc_t *arc)
 {
 
 	return MAP_GET(mm, mm_buckets, hash, MME_INDEX, mm_entry_t, mme_next,
-		       (MME_GET_A(node) == arc->a && node->mme_r == arc->r &&
+		       (!MME_IS_SKIPPED(node) &&
+		        MME_GET_A(node) == arc->a && node->mme_r == arc->r &&
 		        node->mme_c == arc->c));
 }
 

@@ -62,6 +62,15 @@ arc_t	arc_sur = {-1, 0, 1};
 	score;				\
 })
 
+#define UPDATE_AXIS(score, old_score, total, s_p1, s_p2, p1_f, p2_f) ({	\
+	(score).p1_f = (s_p1);						\
+	(score).p2_f = (s_p2);						\
+	(total) -= (old_score).p1_f;					\
+	(total) += (old_score).p2_f;					\
+	(total) += (s_p1);						\
+	(total) -= (s_p2);						\
+})
+
 int
 look_moves_at_depth(int depth)
 {
@@ -270,6 +279,39 @@ score_move(tile_map_t *tm, arc_t *move, bool is_p1,
 }
 
 /*
+ * Score a position across all 3 axes for both players, insert it into the cmm,
+ * and update the running total. Returns the updated total, or P1_WON/P2_WON.
+ */
+
+int
+score_and_insert(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total)
+{
+	mm_score_t	score;
+
+	DEBUG_ASSERT(tm_get(tm, pos) == NULL);
+	DEBUG_ASSERT(mm_get(cmm, pos) == NULL);
+
+	score.s0_p1 = score_move(tm, pos, true, step_r, step_l);
+	score.s60_p1 = score_move(tm, pos, true, step_dr, step_ul);
+	score.s120_p1 = score_move(tm, pos, true, step_dl, step_ur);
+	if(score.s0_p1 == P_WON || score.s60_p1 == P_WON ||
+	   score.s120_p1 == P_WON) {
+		return P1_WON;
+	}
+	score.s0_p2 = score_move(tm, pos, false, step_r, step_l);
+	score.s60_p2 = score_move(tm, pos, false, step_dr, step_ul);
+	score.s120_p2 = score_move(tm, pos, false, step_dl, step_ur);
+	if(score.s0_p2 == P_WON || score.s60_p2 == P_WON ||
+	   score.s120_p2 == P_WON) {
+		return P2_WON;
+	}
+	mm_insert(cmm, pos, &score);
+	total += score.s0_p1 + score.s60_p1 + score.s120_p1;
+	total -= score.s0_p2 + score.s60_p2 + score.s120_p2;
+	return total;
+}
+
+/*
  * Populates the candidate move map. We go through every move in the tile map,
  * and look around it. For any empty tile, score it in all directions from the
  * perspective of both players. If a move has already been scored, skip it.
@@ -280,11 +322,12 @@ score_move(tile_map_t *tm, arc_t *move, bool is_p1,
 int
 populate_cmm(tile_map_t *tm, move_map_t *cmm)
 {
-	int 		i, j, total = 0;
-	arc_t		pos;
-	arc_t		nbhd[6];	// neighborhood of tiles
-	mm_score_t	score;
+	int 		i, dir, total = 0;
+	arc_t		pos, cur;
 	tm_entry_t	*entry;
+	void		(*steps[6])(arc_t *, arc_t *) = {step_r, step_dr,
+							 step_dl, step_l,
+							 step_ul, step_ur};
 
 	DEBUG_ASSERT(cmm->mm_stack_size == 0);
 	for(i = 0; i < tm->tm_stack_size; i++) {
@@ -292,50 +335,77 @@ populate_cmm(tile_map_t *tm, move_map_t *cmm)
 		pos.a = TME_GET_A(entry);
 		pos.r = entry->tme_r;
 		pos.c = entry->tme_c;
-		step_r(&pos, &nbhd[0]);
-		step_l(&pos, &nbhd[1]);
-		step_dr(&pos, &nbhd[2]);
-		step_ul(&pos, &nbhd[3]);
-		step_dl(&pos, &nbhd[4]);
-		step_ur(&pos, &nbhd[5]);
-		for(j = 0; j < 6; j++) {
-			pos = nbhd[j];
+		for(dir = 0; dir < 6; dir++) {
+			steps[dir](&pos, &cur);
+
 			// Do not try to make a move on an occupied tile
-			if(tm_get(tm, &pos) != NULL) {
+			if(tm_get(tm, &cur) != NULL) {
 				continue;
 			}
 			// Do not re-score a move we already scored
-			if(mm_get(cmm, &pos) != NULL) {
+			if(mm_get(cmm, &cur) != NULL) {
 				continue;
 			}
-			score.s0_p1 = score_move(tm, &pos, true, step_r,
-						 step_l);
-			score.s60_p1 = score_move(tm, &pos, true, step_dr,
-						  step_ul);
-			score.s120_p1 = score_move(tm, &pos, true, step_dl,
-						   step_ur);
-			if(score.s0_p1 == P_WON ||
-			   score.s60_p1 == P_WON ||
-			   score.s120_p1 == P_WON) {
-				return P1_WON;
+			total = score_and_insert(tm, cmm, &cur, total);
+			if(total == P1_WON || total == P2_WON) {
+				return total;
 			}
-
-			score.s0_p2 = score_move(tm, &pos, false, step_r,
-						 step_l);
-			score.s60_p2 = score_move(tm, &pos, false, step_dr,
-						  step_ul);
-			score.s120_p2 = score_move(tm, &pos, false, step_dl,
-						   step_ur);
-			if(score.s0_p2 == P_WON ||
-			   score.s60_p2 == P_WON ||
-			   score.s120_p2 == P_WON) {
-				return P2_WON;
-			}
-
-			mm_insert(cmm, &pos, &score);
-			total += score.s0_p1 + score.s60_p1 + score.s120_p1;
-			total -= score.s0_p2 + score.s60_p2 + score.s120_p2;
 		}
+	}
+	return total;
+}
+
+/*
+ * Walk up to WIN_LENGTH steps from pos in the given direction. For each
+ * candidate found in the cmm, re-score it along the given axis and update
+ * the running total. Returns the updated total, or P1_WON/P2_WON.
+ */
+
+int
+rescore_axis(tile_map_t *tm, move_map_t *cmm, arc_t *pos, int total, int dir,
+	     void (*walk)(arc_t *, arc_t *),
+	     void (*step)(arc_t *, arc_t *),
+	     void (*step_rev)(arc_t *, arc_t *))
+{
+	int		j, s_p1, s_p2;
+	arc_t		cur, next;
+	mm_entry_t	*entry;
+	mm_score_t	score, old_score;
+
+	cur = *pos;
+	for(j = 0; j < WIN_LENGTH; j++) {
+		walk(&cur, &next);
+		cur = next;
+		entry = mm_get(cmm, &cur);
+		if(entry == NULL) {
+			continue;
+		}
+		DEBUG_ASSERT(tm_get(tm, &cur) == NULL);
+		s_p1 = score_move(tm, &cur, true, step, step_rev);
+		s_p2 = score_move(tm, &cur, false, step, step_rev);
+		if(s_p1 == P_WON) {
+			return P1_WON;
+		}
+		if(s_p2 == P_WON) {
+			return P2_WON;
+		}
+		old_score = entry->mme_score;
+		score = old_score;
+		switch(dir) {
+		case 0:
+			UPDATE_AXIS(score, old_score, total,
+				    s_p1, s_p2, s0_p1, s0_p2);
+			break;
+		case 1:
+			UPDATE_AXIS(score, old_score, total,
+				    s_p1, s_p2, s60_p1, s60_p2);
+			break;
+		case 2:
+			UPDATE_AXIS(score, old_score, total,
+				    s_p1, s_p2, s120_p1, s120_p2);
+			break;
+		}
+		mm_overwrite(cmm, entry, &score);
 	}
 	return total;
 }
@@ -353,10 +423,69 @@ populate_cmm(tile_map_t *tm, move_map_t *cmm)
  */
 
 int
-update_cmm(tile_map_t *tm, move_map_t *cmm, mm_entry_t *move)
+update_cmm(tile_map_t *tm, move_map_t *cmm, mm_entry_t *move, int prev_total)
 {
+	int		total = prev_total;
+	int		dir;
+	arc_t		pos, cur;
+	void		(*step)(arc_t *, arc_t *);
+	void		(*steps[3])(arc_t *, arc_t *) = {step_r, step_dr,
+							 step_dl};
+	void		(*steps_rev[3])(arc_t *, arc_t *) = {step_l, step_ul,
+							     step_ur};
 
-	return 0;
+	DEBUG_ASSERT(MME_IS_SKIPPED(move));
+	total -= move->mme_score.s0_p1 + move->mme_score.s60_p1 +
+		 move->mme_score.s120_p1;
+	total += move->mme_score.s0_p2 + move->mme_score.s60_p2 +
+		 move->mme_score.s120_p2;
+
+	pos.a = MME_GET_A(move);
+	pos.r = move->mme_r;
+	pos.c = move->mme_c;
+
+	/*
+	 * For each of the 3 axes, walk up to WIN_LENGTH in both directions
+	 * from the move. Re-score any existing candidate along that axis.
+	 */
+
+	for(dir = 0; dir < 3; dir++) {
+		total = rescore_axis(tm, cmm, &pos, total, dir,
+				     steps[dir], steps[dir], steps_rev[dir]);
+		if(total == P1_WON || total == P2_WON) {
+			return total;
+		}
+		total = rescore_axis(tm, cmm, &pos, total, dir,
+				     steps_rev[dir], steps[dir],
+				     steps_rev[dir]);
+		if(total == P1_WON || total == P2_WON) {
+			return total;
+		}
+	}
+
+	/*
+	 * Add new candidates from the move's immediate neighborhood.
+	 * For each of the 6 neighbors, if the position is empty and not
+	 * already in the cmm, score it fully and insert.
+	 */
+
+	for(dir = 0; dir < 6; dir++) {
+		step = dir < 3 ? steps[dir] : steps_rev[dir - 3];
+
+		step(&pos, &cur);
+		if(tm_get(tm, &cur) != NULL) {
+			continue;
+		}
+		if(mm_get(cmm, &cur) != NULL) {
+			continue;
+		}
+		total = score_and_insert(tm, cmm, &cur, total);
+		if(total == P1_WON || total == P2_WON) {
+			return total;
+		}
+	}
+
+	return total;
 }
 
 /*
@@ -371,7 +500,6 @@ populate_sorted_moves(move_map_t *cmm, move_list_t *ml,
 		      mm_entry_t **sorted_moves, int depth)
 {
 	int		i, look_moves;
-	arc_t		move;
 	uint32_t	move_impact;
 	mm_entry_t	*entry;
 
@@ -422,13 +550,13 @@ populate_sorted_moves(move_map_t *cmm, move_list_t *ml,
 int
 do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 		  int alpha, int beta, arc_t *best_move_out,
-		  mm_entry_t *prev_move)
+		  mm_entry_t *prev_move, int prev_eval)
 {
 	bool		is_p1;
 	int		i, best_score, current_eval, sub_eval, look_moves;
 	arc_t		move, best_move;
 	mm_entry_t	*sorted_moves[MAX_EVAL_WIDTH];
-	uint32_t	cmm_stack_size, move_impact;
+	uint32_t	cmm_stack_size;
 	mm_entry_t	*entry;
 	tm_entry_t	*tile;
 
@@ -437,8 +565,7 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 	if(depth == 0) {
 		current_eval = populate_cmm(tm, cmm);
 	} else {
-		// TODO: update_cmm
-		current_eval = populate_cmm(tm, cmm);
+		current_eval = update_cmm(tm, cmm, prev_move, prev_eval);
 	}
 	if(current_eval == P1_WON || current_eval == P2_WON) {
 		// If we need to return the best move, but the game is over,
@@ -455,8 +582,7 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 	// If this is our max depth, just return the current eval without
 	// finding anything more accurate.
 	if(depth >= MAX_EVAL_DEPTH) {
-		// TODO: update_cmm
-		best_score = populate_cmm(tm, cmm);
+		best_score = update_cmm(tm, cmm, prev_move, prev_eval);
 		goto undo_cmm_and_exit;
 	}
 	// Get the top N moves, in sorted order (descending).
@@ -472,7 +598,7 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
 		SET_FLAG(entry->mme_flags, MME_SKIPPED);
 		tile = tm_insert(tm, &move, is_p1);
 		sub_eval = do_evaluate_ahead(tm, cmm, ml, depth+1, alpha, beta,
-					     NULL, entry);
+					     NULL, entry, current_eval);
 		tm_remove_entry(tm, tile);
 		DEBUG_ASSERT(MME_IS_SKIPPED(entry));
 		RESET_FLAG(entry->mme_flags, MME_SKIPPED);
@@ -530,7 +656,7 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 	tm_init(&tm);
 	mm_init(&cmm);
 	err = do_evaluate_ahead(&tm, &cmm, &moves_list, 0, P2_WON, P1_WON,
-				&best_move, NULL);
+				&best_move, NULL, 0);
 	if(err == 0) {
 		*best_a = best_move.a;
 		*best_r = best_move.r;

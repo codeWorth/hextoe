@@ -220,6 +220,30 @@ test_get_hash_direct(void)
 	PASS("get_hash_direct");
 }
 
+static void
+test_get_skipped_returns_null(void)
+{
+	arc_t		arc = ARC(false, 3, 3);
+	mm_score_t	s1 = SCORE(1, 0, 0, 0, 0, 0);
+	mm_score_t	s2 = SCORE(2, 0, 0, 0, 0, 0);
+	mm_entry_t	*orig;
+
+	mm_init(&mm);
+	orig = mm_insert(&mm, &arc, &s1);
+	mm_overwrite(&mm, orig, &s2);
+
+	/* The original is now skipped. mm_get should skip it and return
+	 * the new (non-skipped) entry, not the skipped one. */
+	assert(mm_get(&mm, &arc) != NULL);
+	assert(!MME_IS_SKIPPED(mm_get(&mm, &arc)));
+
+	/* Now mark the new entry as skipped too (simulating what
+	 * do_evaluate_ahead does). mm_get should return NULL. */
+	SET_FLAG(mm_get(&mm, &arc)->mme_flags, MME_SKIPPED);
+	assert(mm_get(&mm, &arc) == NULL);
+	PASS("get_skipped_returns_null");
+}
+
 /* ------------------------------------------------------------------ */
 /* mm_overwrite                                                       */
 /* ------------------------------------------------------------------ */
@@ -1837,7 +1861,6 @@ test_populate_cmm_single_tile(void)
 	move_map_t	lcmm;
 	arc_t		tile = ARC(false, 0, 0);
 	arc_t		nbr;
-	int		total;
 
 	/*
 	 * One tile placed. It has 6 neighbors, all empty.
@@ -1846,7 +1869,7 @@ test_populate_cmm_single_tile(void)
 	tm_init(&ltm);
 	mm_init(&lcmm);
 	tm_insert(&ltm, &tile, true);
-	total = populate_cmm(&ltm, &lcmm);
+	(void)populate_cmm(&ltm, &lcmm);
 
 	assert(lcmm.mm_stack_size == 6);
 
@@ -1873,7 +1896,6 @@ test_populate_cmm_adjacent_dedup(void)
 	move_map_t	lcmm;
 	arc_t		t0 = ARC(false, 0, 0);
 	arc_t		t1 = ARC(false, 0, 1);
-	int		total;
 
 	/*
 	 * Two horizontally adjacent tiles. They share some neighbors.
@@ -1884,7 +1906,7 @@ test_populate_cmm_adjacent_dedup(void)
 	mm_init(&lcmm);
 	tm_insert(&ltm, &t0, true);
 	tm_insert(&ltm, &t1, true);
-	total = populate_cmm(&ltm, &lcmm);
+	(void)populate_cmm(&ltm, &lcmm);
 
 	/* t0 has 6 neighbors, t1 has 6 neighbors.
 	 * t1 is a neighbor of t0 (right) -> occupied, skipped.
@@ -1906,7 +1928,6 @@ test_populate_cmm_occupied_skipped(void)
 	move_map_t	lcmm;
 	arc_t		t0 = ARC(false, 0, 0);
 	arc_t		t1 = ARC(false, 0, 1);
-	int		total;
 
 	/*
 	 * Two adjacent tiles. Verify neither occupied position is in the cmm.
@@ -1915,7 +1936,7 @@ test_populate_cmm_occupied_skipped(void)
 	mm_init(&lcmm);
 	tm_insert(&ltm, &t0, true);
 	tm_insert(&ltm, &t1, false);
-	total = populate_cmm(&ltm, &lcmm);
+	(void)populate_cmm(&ltm, &lcmm);
 
 	assert(mm_get(&lcmm, &t0) == NULL);
 	assert(mm_get(&lcmm, &t1) == NULL);
@@ -2003,6 +2024,326 @@ test_populate_cmm_total_sign(void)
 	total = populate_cmm(&ltm, &lcmm);
 	assert(total < 0);
 	PASS("populate_cmm_total_sign");
+}
+
+/* ================================================================== */
+/* update_cmm helpers                                                 */
+/* ================================================================== */
+
+/*
+ * Check that two move maps contain the same non-skipped entries with matching
+ * arcs and scores. Iterates both directions to ensure neither has entries
+ * the other is missing.
+ */
+
+static void
+assert_cmm_equal(move_map_t *mm1, move_map_t *mm2)
+{
+	int		i;
+	arc_t		arc;
+	mm_entry_t	*e1, *e2;
+
+	/* Every non-skipped entry in mm1 must exist in mm2 with same score */
+	for(i = 0; i < mm1->mm_stack_size; i++) {
+		e1 = &mm1->mm_stack[i];
+		if(MME_IS_SKIPPED(e1)) {
+			continue;
+		}
+		arc.a = MME_GET_A(e1);
+		arc.r = e1->mme_r;
+		arc.c = e1->mme_c;
+		e2 = mm_get(mm2, &arc);
+		assert(e2 != NULL);
+		assert(e2->mme_score.s0_p1 == e1->mme_score.s0_p1);
+		assert(e2->mme_score.s60_p1 == e1->mme_score.s60_p1);
+		assert(e2->mme_score.s120_p1 == e1->mme_score.s120_p1);
+		assert(e2->mme_score.s0_p2 == e1->mme_score.s0_p2);
+		assert(e2->mme_score.s60_p2 == e1->mme_score.s60_p2);
+		assert(e2->mme_score.s120_p2 == e1->mme_score.s120_p2);
+	}
+
+	/* Every non-skipped entry in mm2 must exist in mm1 */
+	for(i = 0; i < mm2->mm_stack_size; i++) {
+		e2 = &mm2->mm_stack[i];
+		if(MME_IS_SKIPPED(e2)) {
+			continue;
+		}
+		arc.a = MME_GET_A(e2);
+		arc.r = e2->mme_r;
+		arc.c = e2->mme_c;
+		e1 = mm_get(mm1, &arc);
+		assert(e1 != NULL);
+	}
+}
+
+/*
+ * Helper for update_cmm tests. Given an initial tile map (as arrays),
+ * a move to make, and the player for that move:
+ * 1. Build tile map and populate cmm_test.
+ * 2. Skip the move's entry in cmm_test, insert the tile, call update_cmm.
+ * 3. Build a fresh cmm_verify via populate_cmm on the updated tile map.
+ * 4. Assert totals match and move maps are equivalent.
+ */
+
+static void
+verify_update_cmm(int *as, int *rs, int *cs, int *is_p1s, int num_moves,
+		  int move_a, int move_r, int move_c, bool move_is_p1)
+{
+	tile_map_t	ltm;
+	move_map_t	cmm_test, cmm_verify;
+	int		total_test, total_updated, total_verify;
+	arc_t		move_arc;
+	mm_entry_t	*entry;
+
+	/* Build initial state */
+	tm_init(&ltm);
+	mm_init(&cmm_test);
+	populate_tile_map(&ltm, as, rs, cs, is_p1s, num_moves);
+	total_test = populate_cmm(&ltm, &cmm_test);
+
+	/* Skip the candidate entry for the move and insert tile. */
+	move_arc = ARC(move_a, move_r, move_c);
+	entry = mm_get(&cmm_test, &move_arc);
+	assert(entry != NULL);
+	SET_FLAG(entry->mme_flags, MME_SKIPPED);
+	tm_insert(&ltm, &move_arc, move_is_p1);
+
+	/* Incremental update */
+	total_updated = update_cmm(&ltm, &cmm_test, entry, total_test);
+
+	/* Build fresh reference */
+	mm_init(&cmm_verify);
+	total_verify = populate_cmm(&ltm, &cmm_verify);
+
+	/* Verify */
+	assert(total_updated == total_verify);
+	if(total_verify == P1_WON || total_verify == P2_WON) {
+		return;
+	}
+	assert_cmm_equal(&cmm_test, &cmm_verify);
+}
+
+/* ================================================================== */
+/* update_cmm tests                                                   */
+/* ================================================================== */
+
+static void
+test_update_cmm_single_tile(void)
+{
+	/* One tile at origin. Move placed at right neighbor. */
+	int	as[]     = {0};
+	int	rs[]     = {0};
+	int	cs[]     = {0};
+	int	is_p1s[] = {1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 1,
+			  0, 0, 1, false);
+	PASS("update_cmm_single_tile");
+}
+
+static void
+test_update_cmm_extend_horizontal(void)
+{
+	/* 3 p1 tiles in a horizontal row, move extends to 4. */
+	int	as[]     = {0, 0, 0};
+	int	rs[]     = {0, 0, 0};
+	int	cs[]     = {0, 1, 2};
+	int	is_p1s[] = {1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 3,
+			  0, 0, 3, true);
+	PASS("update_cmm_extend_horizontal");
+}
+
+static void
+test_update_cmm_extend_diagonal(void)
+{
+	/*
+	 * 3 p1 tiles along the 60-degree axis (step_dr from a=0,r=0,c=0).
+	 * step_dr from (a=0,r=0,c=0) -> (a=1,r=0,c=0)
+	 * step_dr from (a=1,r=0,c=0) -> (a=0,r=1,c=1)
+	 * Move extends at step_dr from (a=0,r=1,c=1) -> (a=1,r=1,c=1)
+	 */
+	int	as[]     = {0, 1, 0};
+	int	rs[]     = {0, 0, 1};
+	int	cs[]     = {0, 0, 1};
+	int	is_p1s[] = {1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 3,
+			  1, 1, 1, true);
+	PASS("update_cmm_extend_diagonal");
+}
+
+static void
+test_update_cmm_bridge_gap(void)
+{
+	/* p1 at c=0,1 and c=3,4 with gap at c=2. Move fills the gap. */
+	int	as[]     = {0, 0, 0, 0};
+	int	rs[]     = {0, 0, 0, 0};
+	int	cs[]     = {0, 1, 3, 4};
+	int	is_p1s[] = {1, 1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 4,
+			  0, 0, 2, true);
+	PASS("update_cmm_bridge_gap");
+}
+
+static void
+test_update_cmm_between_enemies(void)
+{
+	/* p1 at c=-1, p2 at c=1. Move at c=0 (between them). */
+	int	as[]     = {0, 0};
+	int	rs[]     = {0, 0};
+	int	cs[]     = {-1, 1};
+	int	is_p1s[] = {1, 0};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 2,
+			  0, 0, 0, true);
+	PASS("update_cmm_between_enemies");
+}
+
+static void
+test_update_cmm_new_candidates(void)
+{
+	/*
+	 * Tiles clustered at c=0,1. Move at c=2 extends the cluster.
+	 * Neighbors of c=2 at c=3 (and diagonals) are brand new candidates.
+	 */
+	int	as[]     = {0, 0};
+	int	rs[]     = {0, 0};
+	int	cs[]     = {0, 1};
+	int	is_p1s[] = {1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 2,
+			  0, 0, 2, true);
+	PASS("update_cmm_new_candidates");
+}
+
+static void
+test_update_cmm_all_axes(void)
+{
+	/*
+	 * Tiles on all 3 axes from (a=0,r=0,c=0):
+	 * Horizontal: (a=0,r=0,c=1)
+	 * 60-degree: (a=1,r=0,c=0)
+	 * 120-degree: (a=1,r=-1,c=0)
+	 * Move at origin touches all 3.
+	 */
+	int	as[]     = {0, 1, 1};
+	int	rs[]     = {0, 0, -1};
+	int	cs[]     = {1, 0, 0};
+	int	is_p1s[] = {1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 3,
+			  0, 0, 0, true);
+	PASS("update_cmm_all_axes");
+}
+
+static void
+test_update_cmm_p2_among_p1(void)
+{
+	/* Board is p1 tiles at c=0,1,2. p2 makes a move at c=3. */
+	int	as[]     = {0, 0, 0};
+	int	rs[]     = {0, 0, 0};
+	int	cs[]     = {0, 1, 2};
+	int	is_p1s[] = {1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 3,
+			  0, 0, 3, false);
+	PASS("update_cmm_p2_among_p1");
+}
+
+static void
+test_update_cmm_alternating(void)
+{
+	/* Alternating p1/p2: p1 at c=0, p2 at c=1, p1 at c=2. p2 moves c=3. */
+	int	as[]     = {0, 0, 0};
+	int	rs[]     = {0, 0, 0};
+	int	cs[]     = {0, 1, 2};
+	int	is_p1s[] = {1, 0, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 3,
+			  0, 0, 3, false);
+	PASS("update_cmm_alternating");
+}
+
+static void
+test_update_cmm_move_was_candidate(void)
+{
+	/*
+	 * The move is placed on a position that was a candidate.
+	 * This is the normal case — the candidate is skipped externally.
+	 */
+	int	as[]     = {0, 0};
+	int	rs[]     = {0, 0};
+	int	cs[]     = {0, 2};
+	int	is_p1s[] = {1, 1};
+
+	/* c=1 is a candidate (neighbor of both tiles) */
+	verify_update_cmm(as, rs, cs, is_p1s, 2,
+			  0, 0, 1, true);
+	PASS("update_cmm_move_was_candidate");
+}
+
+static void
+test_update_cmm_near_win(void)
+{
+	/* 4 p1 tiles in a row at c=0..3. Move at c=4 makes 5. */
+	int	as[]     = {0, 0, 0, 0};
+	int	rs[]     = {0, 0, 0, 0};
+	int	cs[]     = {0, 1, 2, 3};
+	int	is_p1s[] = {1, 1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 4,
+			  0, 0, 4, true);
+	PASS("update_cmm_near_win");
+}
+
+static void
+test_update_cmm_dense_board(void)
+{
+	/* Dense cluster: tiles at (0,0,0),(0,0,1),(0,1,0),(0,1,1),(1,0,0).
+	 * Move at (1,0,1). Many overlapping neighborhoods. */
+	int	as[]     = {0, 0, 0, 0, 1};
+	int	rs[]     = {0, 0, 1, 1, 0};
+	int	cs[]     = {0, 1, 0, 1, 0};
+	int	is_p1s[] = {1, 0, 1, 0, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 5,
+			  1, 0, 1, false);
+	PASS("update_cmm_dense_board");
+}
+
+static void
+test_update_cmm_a_true_move(void)
+{
+	/* Tiles at a=1 positions. Tests a=true triangle orientation. */
+	int	as[]     = {1, 1};
+	int	rs[]     = {0, 0};
+	int	cs[]     = {0, 1};
+	int	is_p1s[] = {1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 2,
+			  1, 0, 2, true);
+	PASS("update_cmm_a_true_move");
+}
+
+static void
+test_update_cmm_far_axis(void)
+{
+	/*
+	 * Tiles along the horizontal axis at c=0..2.
+	 * Move at (1,0,0) — a diagonal neighbor of (0,0,0).
+	 * This move is near tiles on the 60-degree axis but far on horizontal.
+	 */
+	int	as[]     = {0, 0, 0};
+	int	rs[]     = {0, 0, 0};
+	int	cs[]     = {0, 1, 2};
+	int	is_p1s[] = {1, 1, 1};
+
+	verify_update_cmm(as, rs, cs, is_p1s, 3,
+			  1, 0, 0, true);
+	PASS("update_cmm_far_axis");
 }
 
 /* ================================================================== */
@@ -2126,7 +2467,7 @@ test_psm_skipped_entries_ignored(void)
 	move_entry_t	heap_buf[MAX_EVAL_WIDTH + 1];
 	mm_entry_t	*sorted[MAX_EVAL_WIDTH];
 	mm_entry_t	*entry;
-	int		n, i;
+	int		n;
 
 	mm_init(&lcmm);
 	INIT_STACK(&ml, heap_buf, MAX_EVAL_WIDTH);
@@ -2269,6 +2610,7 @@ main(int argc, char const *argv[])
 	test_get_missing();
 	test_get_distinguishes_a();
 	test_get_hash_direct();
+	test_get_skipped_returns_null();
 
 	printf("== mm_overwrite ==\n");
 	test_overwrite_updates_score();
@@ -2397,6 +2739,22 @@ main(int argc, char const *argv[])
 	test_populate_cmm_p1_wins();
 	test_populate_cmm_p2_wins();
 	test_populate_cmm_total_sign();
+
+	printf("== update_cmm ==\n");
+	test_update_cmm_single_tile();
+	test_update_cmm_extend_horizontal();
+	test_update_cmm_extend_diagonal();
+	test_update_cmm_bridge_gap();
+	test_update_cmm_between_enemies();
+	test_update_cmm_new_candidates();
+	test_update_cmm_all_axes();
+	test_update_cmm_p2_among_p1();
+	test_update_cmm_alternating();
+	test_update_cmm_move_was_candidate();
+	test_update_cmm_near_win();
+	test_update_cmm_dense_board();
+	test_update_cmm_a_true_move();
+	test_update_cmm_far_axis();
 
 	printf("== populate_sorted_moves ==\n");
 	test_psm_basic_ordering();
