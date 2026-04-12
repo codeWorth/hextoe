@@ -18,7 +18,7 @@ venv/
 
 # Binary
 bot/bot
-bot_test
+bot/bot_test
 bot/bot_demo
 *.so
 *.dSYM/

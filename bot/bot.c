@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "move_map.h"
 #include "tile_map.h"
+#include "move_heap.h"
 #include "bot_util.h"
 #include "bot.h"
 #include "bot_params.h"
@@ -73,6 +74,11 @@ look_moves_at_depth(int depth)
 		return moves;
 	}
 }
+
+/*
+ * The first turn is always p1's. Then, the players alternate, getting two turns
+ * in a row each.
+ */
 
 bool
 is_p1_for_turn(int num_moves)
@@ -154,7 +160,8 @@ populate_tile_map(tile_map_t *tm, int* as, int* rs, int* cs, int* is_p1s,
 
 /*
  * Walk in the given direction until the line ends. Returns the line length.
- * Populates "enemy_end" with true if the line ends with an enemy tile.
+ * Populates "enemy_end" with true if the line ends with an enemy tile. If the
+ * walk is started on an empty or enemy tile, the length will be 0.
  */
 
 int
@@ -334,6 +341,78 @@ populate_cmm(tile_map_t *tm, move_map_t *cmm)
 }
 
 /*
+ * Update the candidate move map based on the given move that was made. We know
+ * when a move is made that only moves along the 3 axes can be affected by the
+ * change. In addition, only moves with 6 tiles along those 3 axes can be
+ * affected. So all we need to do is walk along those axes, find any candidate
+ * moves, and overwrite them with the new score. Also, we need to in the
+ * neighborhood of the most recent move, and add any new entries to the move
+ * map for valid moves around it. There may be an existing candidate move in
+ * the new move's neighborhood, which will be overwritten, or no move yet,
+ * meaning a new one is inserted.
+ */
+
+int
+update_cmm(tile_map_t *tm, move_map_t *cmm, mm_entry_t *move)
+{
+
+	return 0;
+}
+
+/*
+ * Given a list of candidate moves in the candidate move map, find the N highest
+ * impact moves, and sort them in descending order. Populate the input list,
+ * sorted_moves, with these N moves. N is determined from the provided depth.
+ * Returns the number of moves in sorted_moves.
+ */
+
+int
+populate_sorted_moves(move_map_t *cmm, move_list_t *ml,
+		      mm_entry_t **sorted_moves, int depth)
+{
+	int		i, look_moves;
+	arc_t		move;
+	uint32_t	move_impact;
+	mm_entry_t	*entry;
+
+	// ml is reused between calls. Simply setting the length to 0 should
+	// allow it to be safely reused.
+	ml->ml_len = 0;
+	// We need to sort the current candidate moves to find the top N most
+	// impactful. Then we can evaluate in order of impact. First we use a
+	// min heap to find this subset.
+	for(i = 0; i < cmm->mm_stack_size; i++) {
+		entry = &cmm->mm_stack[i];
+		if(MME_IS_SKIPPED(entry)) {
+			continue;
+		}
+		move_impact = MME_IMPACT(entry);
+		if(ml->ml_len >= ml->ml_size) {
+			if(move_impact <= ml->ml_moves[1].mle_score) {
+				continue;
+			}
+			mh_pop(ml);
+		}
+		mh_push(ml, entry, move_impact);
+	}
+	// Before we mess with the min heap, lets get the number of moves we're
+	// going to iterate over. In rare cases, there are fewer available moves
+	// than desired at this depth, so we have to account for that.
+	look_moves = look_moves_at_depth(depth);
+	if(look_moves > ml->ml_len) {
+		look_moves = ml->ml_len;
+	}
+	// Our min heap has the N highest impact moves. We need to pop each
+	// element out, because it will be popped out in reverse order with the
+	// least impactful first. We insert them in reverse order into the list.
+	while(ml->ml_len > 0) {
+		i = ml->ml_len - 1;
+		sorted_moves[i] = mh_pop(ml);
+	}
+	return look_moves;
+}
+
+/*
  * This function chooses the best move for the current player, based on the
  * moves passed in.
  * mm and cmm are shared between calls to this function, and must be returned
@@ -341,24 +420,18 @@ populate_cmm(tile_map_t *tm, move_map_t *cmm)
  */
 
 int
-do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, int depth, int alpha,
-		  int beta, arc_t *best_move_out, arc_t prev_move)
+do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, move_list_t *ml, int depth,
+		  int alpha, int beta, arc_t *best_move_out,
+		  mm_entry_t *prev_move)
 {
-	bool		is_p1, was_p1;
+	bool		is_p1;
 	int		i, best_score, current_eval, sub_eval, look_moves;
 	arc_t		move, best_move;
-	arc_t		sorted_moves[MAX_EVAL_WIDTH];
+	mm_entry_t	*sorted_moves[MAX_EVAL_WIDTH];
 	uint32_t	cmm_stack_size, move_impact;
 	mm_entry_t	*entry;
 	tm_entry_t	*tile;
-	move_list_t	moves_list;
-	move_entry_t	moves_heap[MAX_EVAL_WIDTH + 1];
 
-	// Even though the moves_heap has MAX_EVAL_WIDTH + 1 slots, our max size
-	// is actually just MAX_EVAL_WIDTH, because our min heap is 1 indexed.
-	// Index 0 is left empty, which simplifies the indexing math.
-	INIT_STACK(&moves_list, moves_heap, MAX_EVAL_WIDTH);
-	was_p1 = is_p1_for_turn(tm->tm_stack_size - 1);
 	is_p1 = is_p1_for_turn(tm->tm_stack_size);
 	cmm_stack_size = cmm->mm_stack_size;
 	if(depth == 0) {
@@ -386,50 +459,23 @@ do_evaluate_ahead(tile_map_t *tm, move_map_t *cmm, int depth, int alpha,
 		best_score = populate_cmm(tm, cmm);
 		goto undo_cmm_and_exit;
 	}
-	// We need to sort the current candidate moves to find the top N most
-	// impactful. Then we can evaluate in order of impact. First we use a
-	// min heap to find this subset.
-	for(i = 0; i < cmm->mm_stack_size; i++) {
-		entry = &cmm->mm_stack[i];
-		if(MME_IS_SKIPPED(entry)) {
-			continue;
-		}
-		move_impact = MME_IMPACT(entry);
-		if(moves_list.ml_len >= moves_list.ml_size) {
-			if(move_impact <= moves_list.ml_moves[1].mle_score) {
-				continue;
-			}
-			mh_pop(&moves_list);
-		}
-		move.a = MME_GET_A(entry);
-		move.r = entry->mme_r;
-		move.c = entry->mme_c;
-		mh_push(&moves_list, &move, move_impact);
-	}
-	// Before we mess with the min heap, lets get the number of moves we're
-	// going to iterate over. In rare cases, there are fewer available moves
-	// than desired at this depth, so we have to account for that.
-	look_moves = look_moves_at_depth(depth);
-	if(look_moves > moves_list.ml_len) {
-		look_moves = moves_list.ml_len;
-	}
-	// Our min heap has the N highest impact moves. We need to pop each
-	// element out, because it will be popped out in reverse order with the
-	// least impactful first. We insert them in reverse order into the list.
-	while(moves_list.ml_len > 0) {
-		sorted_moves[moves_list.ml_len - 1] = mh_pop(&moves_list);
-	}
+	// Get the top N moves, in sorted order (descending).
+	look_moves = populate_sorted_moves(cmm, ml, sorted_moves, depth);
 
 	// Now we need to go through the moves and evaluate them in order. The
 	// moves are labeled with a score of how impactful they are. We simply
 	// go through them in order of impact, and see which gives us the best
 	// evaluation.
 	for(i = 0; i < look_moves; i++) {
-		move = sorted_moves[i];
+		entry = sorted_moves[i];
+		DEBUG_ASSERT(!MME_IS_SKIPPED(entry));
+		SET_FLAG(entry->mme_flags, MME_SKIPPED);
 		tile = tm_insert(tm, &move, is_p1);
-		sub_eval = do_evaluate_ahead(tm, cmm, depth+1, alpha, beta,
-					     NULL, move);
+		sub_eval = do_evaluate_ahead(tm, cmm, ml, depth+1, alpha, beta,
+					     NULL, entry);
 		tm_remove_entry(tm, tile);
+		DEBUG_ASSERT(MME_IS_SKIPPED(entry));
+		RESET_FLAG(entry->mme_flags, MME_SKIPPED);
 		// If this is the first try, or this move is better for us than
 		// the previous best, update the best move.
 		if(i == 0 || (is_p1 && sub_eval > best_score) ||
@@ -473,11 +519,18 @@ evaluate_ahead(int* as, int* rs, int* cs, int* is_p1s, int num_moves,
 	arc_t		best_move;
 	tile_map_t	tm;
 	move_map_t	cmm;
+	move_list_t	moves_list;
+	move_entry_t	moves_heap[MAX_EVAL_WIDTH + 1];
+
+	// Even though the moves_heap has MAX_EVAL_WIDTH + 1 slots, our max size
+	// is actually just MAX_EVAL_WIDTH, because our min heap is 1 indexed.
+	// Index 0 is left empty, which simplifies the indexing math.
+	INIT_STACK(&moves_list, moves_heap, MAX_EVAL_WIDTH);
 
 	tm_init(&tm);
 	mm_init(&cmm);
-	err = do_evaluate_ahead(&tm, &cmm, 0, P2_WON, P1_WON, &best_move,
-				best_move);
+	err = do_evaluate_ahead(&tm, &cmm, &moves_list, 0, P2_WON, P1_WON,
+				&best_move, NULL);
 	if(err == 0) {
 		*best_a = best_move.a;
 		*best_r = best_move.r;

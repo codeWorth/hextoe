@@ -23,19 +23,6 @@
 #define MASK_30		0x3FFFFFFFULL
 #define MASK_61		0x1FFFFFFFFFFFFFFF
 
-#define PUSH_STACK(ml, move, score) ({				\
-	DEBUG_ASSERT((ml)->ml_len < (ml)->ml_size);		\
-	(ml)->ml_moves[((ml)->ml_len)].mle_move = (move);	\
-	(ml)->ml_moves[((ml)->ml_len)].mle_score = (score);	\
-	(ml)->ml_len++;						\
-})
-
-#define INIT_STACK(ml, arr, size) ({	\
-	(ml)->ml_moves = (arr);		\
-	(ml)->ml_size = (size);		\
-	(ml)->ml_len = 0;		\
-})
-
 #define	DLL_INIT(h, type, next, prev) {			\
 	(h)->next = (type *)(h);			\
 	(h)->prev = (type *)(h);			\
@@ -110,22 +97,8 @@
 	res;								\
 })
 
-typedef struct move_entry {
-	arc_t		mle_move;
-	uint32_t	mle_score;
-} move_entry_t;
-
-typedef struct move_list {
-	move_entry_t	*ml_moves;
-	int		ml_len;
-	int		ml_size;
-} move_list_t;
-
 extern uint64_t splitmix64(uint64_t);
 extern uint64_t fnv_hash(uint64_t);
-
-extern void mh_push(move_list_t *, arc_t *, uint32_t);
-extern arc_t mh_pop(move_list_t *);
 
 extern uint64_t encode_arc(arc_t *);
 

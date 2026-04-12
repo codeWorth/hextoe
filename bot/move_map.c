@@ -87,7 +87,7 @@ mm_insert(move_map_t *mm, arc_t *arc, mm_score_t *score)
 }
 
 /*
- * Entries is inserted at the head of the DLL. The provided entry is marked as
+ * Entry is inserted at the head of the DLL. The provided entry is marked as
  * skipped.
  */
 
@@ -167,6 +167,16 @@ mm_remove_hash(move_map_t *mm, mm_hash hash, arc_t *arc)
 	DEBUG_ASSERT(entry != NULL);
 	mm_remove_entry(mm, entry);
 }
+
+/*
+ * This function should be used to clear any modifications made on the move map
+ * in a given recursive pass. The intention is that each call to this function
+ * removes a "layer," so to speak. Essentially it removes the modifications from
+ * that pass, but leaves the other modifications intact. It is up to the caller
+ * to provide the correct length to accomplish that. As long as the caller
+ * provides the length from before modifications began, this should work
+ * correctly.
+ */
 
 void
 mm_remove_to_length(move_map_t *mm, uint32_t length)

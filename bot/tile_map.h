@@ -18,7 +18,7 @@
 	IS_FLAG_SET((tme)->tme_flags, TME_P1_VAL)
 
 #define TME_A_MATCH(e1, e2)				\
-	((e1)->tme_flags & TME_A_VAL == (e2)->tme_flags & TME_A_VAL)
+	(((e1)->tme_flags & TME_A_VAL) == ((e2)->tme_flags & TME_A_VAL))
 
 #define TME_LOCATION_MATCH(e1, e2)					\
 	((e1)->tme_hash == (e2)->tme_hash && TME_A_MATCH(e1, e2) &&	\
