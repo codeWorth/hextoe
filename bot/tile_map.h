@@ -3,7 +3,7 @@
 
 #include "bot_util.h"
 
-#define TM_BUCKETS	512
+#define TM_BUCKETS	1024
 #define TM_MASK		(TM_BUCKETS - 1)
 #define TM_STACK_SIZE	2048
 #define TME_INDEX(hash)	(hash & TM_MASK)
@@ -20,19 +20,18 @@
 #define TME_A_MATCH(e1, e2)				\
 	(((e1)->tme_flags & TME_A_VAL) == ((e2)->tme_flags & TME_A_VAL))
 
-#define TME_LOCATION_MATCH(e1, e2)					\
-	((e1)->tme_hash == (e2)->tme_hash && TME_A_MATCH(e1, e2) &&	\
-	 (e1)->tme_r == (e2)->tme_r && (e1)->tme_c == (e2)->tme_c)
+#define TME_LOCATION_MATCH(e1, e2)				\
+	(TME_A_MATCH(e1, e2) && (e1)->tme_r == (e2)->tme_r &&	\
+	 (e1)->tme_c == (e2)->tme_c)
 
 typedef uint32_t	tm_hash;
 
 typedef struct tm_entry {
 	struct tm_entry	*tme_next;
 	struct tm_entry	*tme_prev;
-	tm_hash		tme_hash;
-	int32_t		tme_r;
-	int32_t		tme_c;
-	uint16_t	tme_flags;
+	int16_t		tme_r;
+	int16_t		tme_c;
+	uint8_t		tme_flags;
 } tm_entry_t;
 
 typedef struct tile_map {

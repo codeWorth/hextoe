@@ -5,7 +5,7 @@
 
 #define MM_BUCKETS	512
 #define MM_MASK		(MM_BUCKETS - 1)
-#define MM_STACK_SIZE	2048
+#define MM_STACK_SIZE	4096
 #define MME_INDEX(hash)	(hash & MM_MASK)
 
 #define MME_SKIPPED	0x0001

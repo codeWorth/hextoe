@@ -847,17 +847,11 @@ test_tme_location_match(void)
 	memset(&e2, 0, sizeof(e2));
 
 	/* Identical entries match */
-	e1.tme_hash = 42;
 	e1.tme_r = 5;
 	e1.tme_c = 10;
 	e1.tme_flags = 0;
 	e2 = e1;
 	assert(TME_LOCATION_MATCH(&e1, &e2));
-
-	/* Different hash */
-	e2 = e1;
-	e2.tme_hash = 99;
-	assert(!TME_LOCATION_MATCH(&e1, &e2));
 
 	/* Different r */
 	e2 = e1;

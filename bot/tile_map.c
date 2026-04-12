@@ -28,7 +28,6 @@ tm_insert(tile_map_t *tm, arc_t *arc, bool is_p1)
 	DEBUG_ASSERT(tm_get_hash(tm, hash, arc) == NULL);
 	new_entry = MAP_NEW_ENTRY(tm, tm_buckets, tm_stack, tm_stack_size, hash,
 				  TME_INDEX, tm_entry_t, tme_next, tme_prev);
-	new_entry->tme_hash = hash;
 	new_entry->tme_r = arc->r;
 	new_entry->tme_c = arc->c;
 	new_entry->tme_flags = 0;
