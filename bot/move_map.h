@@ -6,15 +6,55 @@
 #define MM_BUCKETS	512
 #define MM_MASK		(MM_BUCKETS - 1)
 #define MM_STACK_SIZE	2048
-#define MME_INDEX(key)	(HASH_FN(key) & MM_MASK)
+#define MME_INDEX(hash)	(hash & MM_MASK)
 
-typedef uint64_t	mm_key;
+#define MME_SKIPPED	0x0001
+#define	MME_A_VAL	0x0002
+
+#define MME_IS_SKIPPED(mme)				\
+	IS_FLAG_SET((mme)->mme_flags, MME_SKIPPED)
+
+#define MME_GET_A(mme)					\
+	IS_FLAG_SET((mme)->mme_flags, MME_A_VAL)
+
+#define MME_A_MATCH(e1, e2)				\
+	(((e1)->mme_flags & MME_A_VAL) == ((e2)->mme_flags & MME_A_VAL))
+
+#define MME_LOCATION_MATCH(e1, e2)					\
+	((e1)->mme_hash == (e2)->mme_hash && MME_A_MATCH(e1, e2) &&	\
+	 (e1)->mme_r == (e2)->mme_r && (e1)->mme_c == (e2)->mme_c)
+
+#define MME_IMPACT(mme) ({				\
+	uint32_t	impact = 0;			\
+							\
+	impact += (mme)->mme_score.s0_p1;		\
+	impact += (mme)->mme_score.s60_p1;		\
+	impact += (mme)->mme_score.s120_p1;		\
+	impact += (mme)->mme_score.s0_p2;		\
+	impact += (mme)->mme_score.s60_p2;		\
+	impact += (mme)->mme_score.s120_p2;		\
+	impact;						\
+})
+
+typedef uint32_t	mm_hash;
+
+typedef struct mm_score {
+	uint32_t	s0_p1;
+	uint32_t	s60_p1;
+	uint32_t	s120_p1;
+	uint32_t	s0_p2;
+	uint32_t	s60_p2;
+	uint32_t	s120_p2;
+} mm_score_t;
 
 typedef struct mm_entry {
 	struct mm_entry	*mme_next;
 	struct mm_entry	*mme_prev;
-	mm_key		mme_key;
-	int		mme_value;
+	mm_hash		mme_hash;
+	int32_t		mme_r;
+	int32_t		mme_c;
+	mm_score_t	mme_score;
+	uint16_t	mme_flags;
 } mm_entry_t;
 
 typedef struct move_map {
@@ -23,14 +63,19 @@ typedef struct move_map {
 	uint32_t	mm_stack_size;
 } move_map_t;
 
-extern mm_entry_t * mm_entries_qselect(mm_entry_t *, int, int);
 
-extern mm_key mm_arc2key(arc_t *);
-extern void mm_decode_key(mm_key, arc_t *);
-
+extern mm_hash mm_hash_arc(arc_t *);
 extern void mm_init(move_map_t *);
-extern mm_entry_t * mm_insert(move_map_t *, mm_key, int);
-extern mm_entry_t * mm_get(move_map_t *, mm_key);
-extern void mm_remove(move_map_t *, mm_key);
+
+extern mm_entry_t * mm_insert(move_map_t *, arc_t *, mm_score_t *);
+extern mm_entry_t * mm_overwrite(move_map_t *, mm_entry_t *, mm_score_t *);
+
+extern mm_entry_t * mm_get(move_map_t *, arc_t *);
+extern mm_entry_t * mm_get_hash(move_map_t *, mm_hash, arc_t *);
+
+extern void mm_remove_entry(move_map_t *, mm_entry_t *);
+extern void mm_remove(move_map_t *, arc_t *);
+extern void mm_remove_hash(move_map_t *, mm_hash, arc_t *);
+extern void mm_remove_to_length(move_map_t *, uint32_t);
 
 #endif

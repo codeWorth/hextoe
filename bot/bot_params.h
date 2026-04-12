@@ -8,4 +8,12 @@
 #define EVAL_WIDTH_STEP	2
 #endif
 
+#define L1_SCORE	1
+#define L2_SCORE	8
+#define L3_SCORE	30
+#define L4_SCORE	120
+#define L5_SCORE	130
+
+#define NEARBY_SCORE	4
+
 #endif

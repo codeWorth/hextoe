@@ -10,9 +10,9 @@ arc_increment(arc_t *dst, arc_t *inc)
 }
 
 void
-arc_mulinc(arc_t *dst, arc_t *inc, uint8_t n)
+arc_mulinc(arc_t *dst, arc_t *inc, bool n)
 {
-	uint8_t		a2;
+	bool		a2;
 	int32_t		r2;
 	int32_t		c2;
 

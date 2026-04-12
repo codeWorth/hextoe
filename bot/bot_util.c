@@ -24,26 +24,9 @@ fnv_hash(uint64_t key)
 	return hval;
 }
 
-// Courtesy of rosetta code. In place list insertion sort, descending order.
+// Courtesy of rosetta code. Min heap push and pop
 void
-ml_sort(move_list_t *ml) {
-	int		i, j, len = ml->ml_len;
-	move_entry_t	e;
-
-	for(i = 1; i < len; ++i) {
-		e = ml->ml_moves[i];
-		j = i;
-		while((j > 0) && (e.mle_score > ml->ml_moves[j - 1].mle_score)) {
-			ml->ml_moves[j] = ml->ml_moves[j - 1];
-			--j;
-		}
-		ml->ml_moves[j] = e;
-	}
-}
-
-// Also courtesy of rosetta code. Min heap push and pop
-void
-mh_push(move_list_t *mh, uint64_t move, int score)
+mh_push(move_list_t *mh, arc_t *move, uint32_t score)
 {
 	int	i, j;
 
@@ -55,15 +38,15 @@ mh_push(move_list_t *mh, uint64_t move, int score)
 		i = j;
 		j = j / 2;
 	}
-	mh->ml_moves[i].mle_move = move;
+	mh->ml_moves[i].mle_move = *move;
 	mh->ml_moves[i].mle_score = score;
 	mh->ml_len++;
 }
 
-uint64_t
+arc_t
 mh_pop(move_list_t *mh) {
-	int		i, j, k;
-	uint64_t	move;
+	int	i, j, k;
+	arc_t	move;
 
 	assert(mh->ml_len > 0);
 	move = mh->ml_moves[1].mle_move;
@@ -73,10 +56,12 @@ mh_pop(move_list_t *mh) {
 	while(i != mh->ml_len + 1) {
 		k = mh->ml_len + 1;
 		j = 2 * i;
-		if (j <= mh->ml_len && mh->ml_moves[j].mle_score < mh->ml_moves[k].mle_score) {
+		if(j <= mh->ml_len &&
+		   mh->ml_moves[j].mle_score < mh->ml_moves[k].mle_score) {
 			k = j;
 		}
-		if (j + 1 <= mh->ml_len && mh->ml_moves[j + 1].mle_score < mh->ml_moves[k].mle_score) {
+		if(j + 1 <= mh->ml_len &&
+		   mh->ml_moves[j + 1].mle_score < mh->ml_moves[k].mle_score) {
 			k = j + 1;
 		}
 		mh->ml_moves[i] = mh->ml_moves[k];
@@ -96,15 +81,4 @@ encode_arc(arc_t *arc)
 	move <<= 30;
 	move |= arc->c & MASK_30;
 	return move;
-}
-
-void
-deocde_move(uint64_t move, arc_t *arc)
-{
-	// Sign extend the first 30 bits
-	arc->c = (((int) (move & MASK_30)) << 2) >> 2;
-	move >>= 30;
-	arc->r = (((int) (move & MASK_30)) << 2) >> 2;
-	move >>= 30;
-	arc->a = move & 1;
 }
