@@ -12,8 +12,8 @@
 #define L2_SCORE	8
 #define L3_SCORE	30
 #define L4_SCORE	120
-#define L5_SCORE	130
+#define L5_SCORE	120
 
-#define NEARBY_SCORE	4
+#define NEARBY_SCORE	3
 
 #endif
